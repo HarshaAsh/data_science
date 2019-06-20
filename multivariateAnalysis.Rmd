@@ -1,0 +1,127 @@
+---
+title: "Multivariate Analysis"
+author: "Harsha Achyuthuni"
+date: "December 18, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(MASS)
+library(knitr)
+library(kableExtra)
+set.seed(0512)
+travel <- read.csv('travel.csv')
+```
+
+## Introduction
+
+Multivariate EDA techniques generally show the relationship between two or more variables with the depandant variable in the form of either cross-tabulation, statistics or visually. In the current problem it will help us look at relationships between our data.  
+
+This blog is a part of [in-time analysis problem](http://www.harshaash.website/in-time-problem). I want to analyse my entry time at office and understand what factors effect it.  
+After [integrating Google maps data with attendence dataset](http://www.harshaash.website/handling-google-maps-location-data/), I currently have the factors  
+1. date (month / week day / season etc)  
+2. main_activity (means of transport)  
+3. hours.worked  (of the previous day)  
+4. travelling.time (time it took to travel from house to office)  
+5. home.addr (the place of residence)  
+
+The dependent variable is diff.in.time (difference between my actual in time vs policy in-time)
+A sample of the data is shown  
+
+```{r display_data, echo=FALSE, results='asis'}
+travel$home.addr <-  ''
+travel$home.addr[as.Date(travel$date) < dmy('01-10-2018')] <- 'Old House'
+travel$home.addr[as.Date(travel$date) > dmy('01-10-2018')] <- 'New House'
+kable(dplyr::sample_n(travel %>% dplyr::select(diff.in.time, date, main_activity, hours.worked,
+                                         travelling.time, home.addr, diff.out.time), 5),
+      caption = 'Sample Data') %>% 
+  kable_styling(full_width = F) %>%
+  collapse_rows(columns = 1:2, valign = "middle") %>% 
+  scroll_box()
+```
+
+## Cross-tabulation
+For categorical data cross-tabulation is very useful. For two variables, cross-tabulation is performed by making a two-way table with column headings that match the levels of one variable and row headings that match the levels of the other variable, then filling in the counts of all subjects that share a pair of levels. The two variables might be both explanatory, both outcome, or one of each.  
+
+I am using [Kable](https://haozhu233.github.io/kableExtra/awesome_table_in_html.html) to make cool tables.  
+```{r cross-tabulation, echo=TRUE, results='asis'}
+cross_table <- travel %>% group_by(home.addr, main_activity) %>% 
+  summarise(avg.travel.time = mean(travelling.time),
+            avg.in.time.diff = mean(diff.in.time),
+            median.in.time.diff =  median(diff.in.time)) %>% 
+  arrange(home.addr, main_activity)
+
+library(kableExtra)
+kable(cross_table, caption = 'Cross Tabulation') %>% 
+  kable_styling(full_width = F) %>%
+  column_spec(1, bold = T) %>%
+  collapse_rows(columns = 1:2, valign = "middle") %>% 
+  scroll_box()
+```
+
+## Scatter plots
+Scatter plots show how much one variable is affected by another.  
+
+To see how travelling time affects in-time  
+```{r scatter_diagram1, echo=TRUE}
+ggplot(travel, aes(x=diff.in.time, y= travelling.time, color = main_activity)) + 
+  geom_point(show.legend = TRUE) +
+  labs(x = 'In-time difference (Minutes)', y='Travelling time (seconds)',  title = "Travelling time vs in-time",
+       color = 'Mode of transport') + 
+  theme_minimal()+theme(legend.position="bottom")
+```
+
+From the above graph, I can see that:  
+1. For bicycle, as travelling time decreases(low traffic) in-time difference increases(coming earlier to office)  
+2. There seems to be no relationship between travelling time (traffic) and in-time difference when on foot.  
+3. Travelling time has little affect on it-time difference when travelling on vehicle.  
+
+To see how hours worked(on previous day) affects in-time  
+```{r scatter_diagram2, echo=FALSE}
+ggplot(travel, aes(x=diff.in.time, y= hours.worked, color = main_activity)) + 
+  geom_point(show.legend = TRUE) +
+  labs(x = 'In-time difference (Minutes)', y='Hours worked (Hours)',  title = "Hours worked vs in-time",
+       color = 'Mode of transport') + 
+  theme_minimal()+theme(legend.position="bottom")
+```
+
+From the above graph, I can observe that irrespective of mode of transport, my in-time difference increases (coming earlier to office) as hours worked on the previous day increases.  
+
+## Box plots
+Similarly, I want to see how mode of transport affects in-time difference. For categorical variable, box plots display this information in the most ideal manner.  
+```{r box_plot, echo=TRUE, message=FALSE, warning=FALSE}
+ggplot(travel, aes(x=main_activity, y= diff.in.time, group = main_activity)) + 
+  geom_boxplot() +
+  labs(x='Mode of transport', y='In time difference (min)') + 
+  theme_minimal()
+```
+
+From the above graph, I can observe that:  
+1. On vehicle, I went to office on average, ~12 minutes after the policy in-time (in-time difference is -12)  
+2. On cycle, I went to office almost close to the policy in-time  
+3. While walking, I was almost always before the policy in-time   
+
+Similarly for place of residence.  
+```{r box_plot2, echo=FALSE}
+ggplot(travel, aes(x=home.addr, y= diff.in.time, group = home.addr)) + 
+  geom_boxplot() +
+  labs(x='Place of residence',y='In time difference (min)') + 
+  theme_minimal()
+```
+
+From this graph, I can understand that from New house I was close to ~5 minutes after the policy in-time while I used to be on-time while living in Old house.  
+
+
+Created using R Markdown.  
+
+Credits:  
+[Thinkstats](http://greenteapress.com/thinkstats/thinkstats.pdf)  
+[Experimental Design and Analysis](http://www.stat.cmu.edu/~hseltman/309/Book/Book.pdf)

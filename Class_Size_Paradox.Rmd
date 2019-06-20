@@ -1,0 +1,125 @@
+---
+title: "Class size paradox"
+author: "Harsha Achyuthuni"
+date: "December 1, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+library(dplyr)
+library(ggplot2)
+```
+
+## Class size paradox
+
+Discussed in this notebook:  
+1. Class size paradox  
+2. Web scraping in R  
+
+When I was joining my first job after college, my classmates from college who joined along with me were of great help. The alumni of my college assisted me especially during the initial days to find accommodation and to adjust to the culture. Even today, if I need any support in the org from a different department, and I ask them first.  
+
+In any middle to large sized company, the number of college alumni an employee will have will be based on the size (and other factors) of the university they come from. Therefore one metric to rank colleges could be the average number of classmates (or alumni) a student will have in his future workplace.  
+
+I graduated from Amrita University in 2017. I am interested to see the distribution of the number of my classmates present across various companies, and their average number.  
+
+For NIRF ranking, my college publishes the number of students that are placed in every year at <https://www.amrita.edu/nirf/placement-2018>. We can web scrape this data set to find the average and the distribution.  
+
+For web scraping using R, I am using the 'rvest' package in R authored by Hadley Wickham. You can access the documentation for rvest package [here](https://cran.r-project.org/web/packages/rvest/rvest.pdf).
+
+```{r web_scraping, echo=TRUE, message=FALSE, warning=FALSE}
+#Loading the rvest package
+library(rvest)
+
+#Specifying the url for desired website to be scraped
+url <- 'https://www.amrita.edu/nirf/placement-2018'
+
+#Reading the HTML code from the website
+webpage <- read_html(url)
+```
+
+On this website, I want to scrape the table in the tab 2016-17. If I just right click on any table element and select 
+*Inspect*. From the *elements* tab I can observe that the table is a child of *table-responsive* class.  
+
+```{r web_scraping_step2, echo=TRUE, message=TRUE, warning=TRUE}
+
+#Using CSS selectors to scrap the parent of table class
+node <- html_nodes(webpage, '.table-responsive .table')
+node
+```
+There are three lists in *node*, one for each tab in the website. I need to select the 2016-17 tab and pull the table in a data frame. The first 5 rows in the data frame are also displayed.
+
+```{r web_scraping_step3, echo=TRUE, message=TRUE, warning=TRUE}
+# Pulling the table from the third list (for thir tab) in 'node'
+company.list <- html_table(node[3], fill = TRUE, header = TRUE)[[1]]
+head(company.list)
+```
+
+So I have successfully web-scapped the table into a data frame. Some cleaning and converting columns to proper data type is required.
+
+```{r cleaning, echo=FALSE, message=TRUE, warning=TRUE}
+# Pulling the table from the third list (for thir tab) in 'node'
+colnames(company.list) <- c('s.no', 'aca.yr', 'company', 'no.of.students', 'min.sal', 'max.sal', 'avg.sal', 'med.sal')
+company.list <- company.list %>% 
+  filter(aca.yr == '2016-17' & avg.sal == '4.21LPA') %>% 
+  mutate(no.of.students = as.numeric(no.of.students)) %>% 
+  filter(no.of.students > 0) %>% 
+  select(company, no.of.students)
+```
+
+
+The distribution of the number of students is:
+```{r distribution, echo=FALSE, message=TRUE, warning=TRUE}
+ggplot(company.list,aes(x = no.of.students, y=..density..)) +
+  geom_histogram(bins = 50) + 
+  labs(x = 'No of students', y='Density') + 
+  theme_minimal()
+```
+
+The average from the table can be easily found out to be:
+```{r avarage1, echo=FALSE}
+mean(company.list$no.of.students)
+```
+
+On average a student will have ~15 of his batch mates in their company.  
+
+But what if I do not have the above table, and instead took a survey by asking all my classmates during our annual alumni meet? What will I get then? 
+
+A sample of the survey data set is created using the above table itself. This data set will look as follows (example shown for 2 companies):  
+
+```{r survey, echo=FALSE}
+survey <- data.frame(student.name = c(), company = c(), no.of.alumni = c())
+for( i in 1:nrow(company.list)){
+  for(j in 1:company.list[i,]$no.of.students){
+    a <- data.frame(student.number = paste0(strsplit(company.list$company[i], ' ')[[1]][1], '_emp_', j), 
+                   company = company.list$company[i],
+                   no.of.alumni = company.list[i,]$no.of.students)
+    survey <<- rbind(survey, a)
+  }
+}
+head(survey, 6)
+```
+
+Hinduja Global Services has one amrita student but Sonata Software employee has 5. So one student will report as 1 while 5 different students will report the number of alumni as 5.  
+The distribution of the responses of no.of.alumni and the mean will look as follows:
+
+```{r survey-distribution, echo=FALSE, message=TRUE, warning=TRUE}
+ggplot(survey,aes(x = no.of.alumni, y=..density..)) +
+  geom_histogram(bins = 50) + 
+  labs(x = 'No of alumni', y='Density') + 
+  theme_minimal()
+```
+
+```{r survey-mean, echo=FALSE, message=TRUE, warning=TRUE}
+mean(survey$no.of.alumni)
+```
+
+From the survey I get that the average number of college mates that a student will have is 150. The estimate is biased upwards because the larger classes are over weighted in the average.
+
+
+This paradox is called class size paradox.  
+The right estimate to use in the second case is called as the harmonic mean. While doing any survey, one should keep this paradox in mind.

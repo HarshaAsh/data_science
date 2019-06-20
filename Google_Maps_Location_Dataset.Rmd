@@ -1,0 +1,136 @@
+---
+title: "Google Maps Location data"
+author: "Harsha Achyuthuni"
+date: "December 11, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(MASS)
+set.seed(0512)
+attendance <- read.csv("C:/Users/achyuthuni.harsha/Downloads/Attendance_Detail_29_11.csv")
+attendance <- attendance %>% 
+  filter(Was.at.Work == 'True') %>% 
+  mutate(in.time.dmy.hm = dmy_hm(paste(Attendance.Date, In.Time)),
+         out.time.dmy.hm = dmy_hm(paste(Attendance.Date, Last.Out.Time)),
+         post.midnight = (out.time.dmy.hm - in.time.dmy.hm < 0))
+attendance$Attendance.Date <- dmy(attendance$Attendance.Date)
+
+attendance$out.time.dmy.hm[attendance$post.midnight] <- attendance$out.time.dmy.hm[attendance$post.midnight] + days(1)
+attendance <- attendance %>% mutate(hours.worked = out.time.dmy.hm - in.time.dmy.hm)
+
+attendance$policy.in.time <- 'char'
+msu.intime <- attendance$Attendance.Date > dmy('4/8/2017') & attendance$Attendance.Date <= dmy('17/12/2017')
+walmart.intime <- attendance$Attendance.Date > dmy('17/12/2017') & attendance$Attendance.Date <= dmy('30/4/2018')
+walmart.buffer.intime <- attendance$Attendance.Date > dmy('30/4/2018') & attendance$Attendance.Date <= dmy('8/6/2018')
+walmart.daylight.savings.intime <- attendance$Attendance.Date >= dmy('11/6/2018')
+attendance$policy.in.time[msu.intime] <- '1:00 PM'
+attendance$policy.in.time[walmart.buffer.intime] <- '1:30 PM'
+attendance$policy.in.time[walmart.intime] <- '1:15 PM'
+attendance$policy.in.time[walmart.daylight.savings.intime] <- '12:00 PM'
+
+attendance <- attendance %>% 
+  mutate(policy.in.time.dmy.hm = ymd_hm(paste(Attendance.Date, policy.in.time))) %>% 
+  mutate(policy.out.time.dmy.hm = policy.in.time.dmy.hm + hours(9)) %>% 
+  mutate(diff.in.time = difftime(policy.in.time.dmy.hm, in.time.dmy.hm, units = 'mins'),
+         diff.out.time = difftime(out.time.dmy.hm, policy.out.time.dmy.hm, units = 'mins'))
+```
+
+## Integrating Google location history
+
+I want to integrate my Google Location history to my analysis. This to find the factors  
+1. Traffic( Travel time / distance )  
+2. Vehicle used
+
+It's no secret that Google stores a data on all of us. But at least they allow us to access quite a lot of the data they have collected on us. Among this is the Google location history.  
+
+The Google location history can be downloaded from your Google account under https://takeout.google.com/settings/takeout. Make sure you only tick "location history" for download, otherwise it will take super long to get all your Google data.  
+
+The data Google provides you for download is a .json file and can be loaded with the jsonlite package. Loading this file into R might take a few minutes because it can be quite big, depending on how many location points Google had saved about you.  
+
+
+```{r jsonlite, echo=TRUE}
+library(jsonlite)
+setwd('C:/Users/achyuthuni.harsha/Desktop/Blog/takeout-20181205T104628Z-001/Takeout/Location History')
+system.time(
+  x <- fromJSON("Location History.json")
+)
+```
+
+Converting to data frame  
+```{r converting_to_df, echo=TRUE}
+locations <- as.data.frame(x$locations)
+dplyr::sample_n(locations, 5)
+```
+
+The date and time column is in the POSIX milliseconds format, so I converted it to human readable format.  
+
+```{r df_modifications_1, echo=TRUE}
+# The Unix epoch is 1970-01-01 00:00:00 UTC*
+locations$time <- as.POSIXct(as.numeric(locations$timestampMs)/1000, origin = "1970-01-01")
+```
+
+Similarly, longitude and latitude are saved in 10^7 format and were converted to GPS coordinates.
+```{r df_modifications_2, echo=TRUE}
+locations$lat = locations$latitudeE7 / 1e7
+locations$lon = locations$longitudeE7 / 1e7
+```
+
+The modified dataFrame will look like this
+```{r df_print, echo=FALSE}
+locations <- locations %>% dplyr::select(time, lat, lon, accuracy, activity)
+rm(x)
+dplyr::sample_n(locations, 5)
+```
+
+### Data stats
+
+Before I get to actually plotting maps, I want to explore a few basic statistics of the data.  
+1. How many data points did Google record over what period of time?  
+```{r dp_stats, echo=TRUE}
+nrow(locations)
+```
+
+2. Fron when till when is this data recorded  
+```{r dp_stats2, echo=TRUE}
+min(locations$time)
+max(locations$time)
+```
+
+3. How many days were recorded?
+```{r dp_stats3, echo=TRUE}
+length(unique(date(locations$time)))
+```
+
+### Integrating with attendence data set
+
+Finding how many working days are captured
+```{r integration1, echo=TRUE}
+working_days <- locations %>% 
+  filter((date(time) %in% date(attendance$Attendance.Date)))
+length(unique(date(working_days$time)))
+```
+
+A total of 235 working days were captured of 266 working days.  
+```{r integration2, echo=TRUE, message=FALSE, warning=FALSE}
+library(ggmap)
+qmplot(lon, lat, data = working_days, zoom = 5)
+```
+
+Filtering for data in Bangalore
+```{r integration3, echo=TRUE, message=FALSE, warning=FALSE}
+# Bangalore North Eastern border is 13.071393, 77.787015 (Hoskote)
+# Bangalore South Western border is 12.889629, 77.454102 (Kumbalgodu)
+bangalore <- locations %>% filter(lon < 77.787015, lon > 77.454102, lat < 13.071393,lat > 12.889629 )
+qmplot(lon, lat, data = working_days, zoom = 15)
+```
+
+
