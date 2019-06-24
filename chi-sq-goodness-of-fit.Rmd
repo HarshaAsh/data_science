@@ -1,0 +1,169 @@
+---
+title: "Chi-square goodness of fit test"
+author: "Harsha Achyuthuni"
+date: "July 16 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+library(tidyverse)
+set.seed(0512)
+setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance')
+data <- read_csv("travel.csv")
+data <- data %>% filter(diff.out.time >= 0)
+data <- data %>% rename(alt.distr = diff.out.time)
+```
+
+In this post, I would like to look into Chi-sq goodness of fit test.  
+During Uni-variate analysis in EDA from the attendance data set, I tried to explain using q-q plot that the feature 'out-time-diff' is not normally distributed. To statistically prove the same, we need to use chi square tests.  
+```{r histogram, echo=TRUE}
+ggplot(data,aes(x = alt.distr)) +
+  stat_function(fun = dnorm, color="darkred",  size = 1,
+                args = list(mean = mean(data$alt.distr),
+                                         sd = sd(data$alt.distr) )) +
+  geom_density(aes(y=..density..), color="darkblue",  size = 1)+
+  geom_histogram(aes(y=..density..), bins = 50, fill = "cornflowerblue", alpha = 0.2) +
+  labs(x = 'Out-time difference (minutes)', y='Density') +
+  theme_minimal()
+```
+
+The q-q plot for reference:  
+```{r q_q_plot, echo=TRUE}
+ggplot(data,aes(sample = alt.distr)) +
+  stat_qq() + stat_qq_line() +
+  ggtitle("Normal distribution Q-Q plot") +
+  theme_minimal()
+```
+
+The chi-square goodness of fit test for each group would have the following hypothesis:    
+H0: There is no statistically significant difference between the observed frequencies of 'diff-in-time' and expected frequencies from a normal distribution  
+H1: There is a statistically significant difference    
+
+The number of intervals is given by the formula, 
+
+```{r no-of-bins, echo=TRUE}
+N <- floor(1+3.3*log10(length(data$alt.distr)))
+```
+
+The observed and expected frequencies considering the normal distribution are as follows:  
+
+```{r observed-frequencies, echo=TRUE}
+minimum.dist <- min(data$alt.distr)
+maximum.dist <- max(data$alt.distr)
+n <- length(data$alt.distr)
+dist.mean <- mean(data$alt.distr)
+dist.sd <- sd(data$alt.distr)
+range.group <- (maximum.dist - minimum.dist)/N
+data <- data %>% mutate(class = floor(alt.distr/range.group),
+                        class_name_min =  minimum.dist + class*range.group,
+                        class_name_max = minimum.dist + (class+ 1)*range.group,
+                        class_name = paste0(class_name_min, '-', class_name_max))
+chi.sq.table <- data %>% group_by(class, class_name) %>% summarise(obs_freq = n(),
+                                                                   class_name_min = mean(class_name_min), 
+                                                                   class_name_max = mean(class_name_max)) %>% 
+  mutate(exp_freq = pnorm(class_name_max, dist.mean, dist.sd)*n - pnorm(class_name_min, dist.mean, dist.sd)*n,
+         chi.sq = ((obs_freq - exp_freq)^2)/exp_freq)
+```
+
+```{r kable, echo=TRUE}
+library(kableExtra)
+kable(chi.sq.table %>% dplyr::select(class_name, obs_freq, exp_freq, chi.sq),
+      caption = 'Cross Tabulation') %>% 
+  kable_styling(full_width = F) %>%
+  column_spec(1, bold = T) %>%
+  collapse_rows(columns = 1:2, valign = "middle") %>% 
+  scroll_box()
+```
+
+Performing the Chi-square test of independence: 
+
+```{r chi-sq-test-function-creation, echo=TRUE}
+# Functions used in chi-sq-test
+
+chi.sq.plot <- function(pop.mean=0, alpha = 0.05, chi.sq, df,
+                              label = 'Chi Square distribution',title = 'Chi Square goodness of fit test'){
+  # Creating a sample chi-sq distribution
+  range <- seq(qchisq(0.0001, df), qchisq(0.9999, df), by = (qchisq(0.9999, df)-qchisq(0.0001, df))*0.001)
+  chi.sq.dist <- data.frame(range = range, dist = dchisq(x = range, ncp = pop.mean, df = df)) %>% 
+    dplyr::mutate(H0 = if_else(range <= qchisq(p = 1-alpha, ncp = pop.mean, df = df,lower.tail = TRUE),'Retain', 'Reject'))
+  # Plotting sampling distribution and x_bar value with cutoff
+  plot.test <- ggplot(data = chi.sq.dist, aes(x = range,y = dist)) +
+    geom_area(aes(fill = H0)) +
+    scale_color_manual(drop = TRUE, values = c('Retain' = "#00BFC4", 'Reject' = "#F8766D"), aesthetics = 'fill') +
+    geom_vline(xintercept = chi.sq, size = 2) +
+    geom_text(aes(x = chi.sq, label = paste0('Chi Sq = ', round(chi.sq,3)), y = mean(dist)), colour="blue", vjust = 1.2) +
+    labs(x = label, y='Density',  title = title) +
+    theme_minimal()+theme(legend.position="bottom")
+  plot(plot.test)
+}
+```
+
+```{r chi-sq, echo=TRUE}
+chi.test <- chisq.test(chi.sq.table$obs_freq, p = chi.sq.table$exp_freq, rescale.p = TRUE)
+print(chi.test)
+chi.sq.plot(chi.sq = chi.test$statistic, df = chi.test$parameter, title = 'Null hypothesis to test normality')
+```
+
+As p < α, where α = 0.05, rejecting the Null hypothesis.  
+
+In the same post, I showed using qq plot how the distribution looks like a exponential distribution. To test if it is statistically significant, I will use the Chi-Square test.  
+The chi-square goodness of fit test for each group would have the following hypothesis:    
+H0: There is no statistically significant difference between the observed frequencies of 'diff-in-time' and expected frequencies   from exponential distribution   
+H1: There is a statistically significant difference   
+
+```{r observed-frequencies-1, echo=TRUE}
+minimum.dist <- min(data$alt.distr)
+maximum.dist <- max(data$alt.distr)
+n <- length(data$alt.distr)
+lamda <- 1/mean(sd(data$alt.distr),mean(data$alt.distr))
+range.group <- (maximum.dist - minimum.dist)/N
+data <- data %>% mutate(class = floor(alt.distr/range.group),
+                        class_name_min =  minimum.dist + class*range.group,
+                        class_name_max = minimum.dist + (class+ 1)*range.group,
+                        class_name = paste0(class_name_min, '-', class_name_max))
+chi.sq.table <- data %>% group_by(class, class_name) %>% summarise(obs_freq = n(),
+                                                                   class_name_min = mean(class_name_min), 
+                                                                   class_name_max = mean(class_name_max)) %>% 
+  mutate(exp_freq = pexp(class_name_max, lamda)*n - pexp(class_name_min, lamda)*n,
+         chi.sq = ((obs_freq - exp_freq)^2)/exp_freq)
+```
+
+```{r kable-2, echo=FALSE}
+kable(chi.sq.table %>% dplyr::select(class_name, obs_freq, exp_freq, chi.sq),
+      caption = 'Cross Tabulation') %>% 
+  kable_styling(full_width = F) %>%
+  column_spec(1, bold = T) %>%
+  collapse_rows(columns = 1:2, valign = "middle") %>% 
+  scroll_box()
+```
+
+I observe that the expected frequency value is close to the observed frequency value in most of the cases.  
+```{r chi-sq-1, echo=FALSE}
+chi.test <- chisq.test(chi.sq.table$obs_freq, p = chi.sq.table$exp_freq, rescale.p = TRUE)
+print(chi.test)
+chi.sq.plot(chi.sq = chi.test$statistic, df = chi.test$parameter, title = 'Null hypothesis to test exponential distribution')
+```
+
+From the table above, I can see that most of the high chi-sq values are due to Class 7 and 8 where observed frequency is less than 10. Ignoring those cases, I get:
+
+```{r chi-sq-2, echo=FALSE}
+chi.sq.table <- chi.sq.table %>% filter(obs_freq >= 10 | exp_freq >= 10)
+chi.test <- chisq.test(chi.sq.table$obs_freq, p = chi.sq.table$exp_freq, rescale.p = TRUE)
+print(chi.test)
+chi.sq.plot(chi.sq = chi.test$statistic, df = chi.test$parameter, title = 'Null hypothesis to test exponential distribution')
+```
+
+As p > α, where α = 0.05, retaining the Null hypothesis  
+I want to find the effect size or the strength of relationship between these variables. That is explained by Cramers V by
+```{r tukeyHSD, echo=TRUE}
+library(lsr)
+cramersV(chi.sq.table$obs_freq, p = chi.sq.table$exp_freq, rescale.p = TRUE)
+```
+For df=3  I have small effect = .06, medium effect = .17, large effect = .29  The current effect is very small.  
+
+Created on 23rd June 2019, Achyuthuni Sri Harsha
