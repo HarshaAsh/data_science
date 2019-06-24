@@ -1,0 +1,128 @@
+---
+title: "Chi Square test of independence"
+author: "Harsha Achyuthuni"
+date: "July 24 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+In this post, I would like to look into Chi Square test of independence. The data set I am going to use is published in https://smartcities.data.gov.in which is a Government of India project under the  National Data Sharing and Accessibility Policy.   
+
+I want to find what are the safest and deadliest ways to travel on Bangalore roads. The [Injuries_and_Fatalities_Bengaluru_from_2016to2018.csv](https://smartcities.data.gov.in/catalog/road-safety-bengaluru?filters%5Bfield_catalog_reference%5D=2914260&format=json&offset=0&limit=9&sort%5Bcreated%5D=desc) data set has total number of injuries and fatalities in Bangalore from 2016 to 2018. I want to take injuries as a dummy for the number of incidents that took place.  
+
+As I want to test that there is significant difference in the fatalities with different types of transport, the null and alternate hypothesis will be as follows:   
+H0: The type of transport is independent of the fatalities  
+H1: The type of transport is dependent  
+
+Sample data set: 
+```{r activities4, echo=FALSE}
+library(tidyverse)
+library(e1071)
+data <- read_csv('Injuries_and_Fatalities_Bengaluru_from_2016to2018.csv')[1,]
+data <- data.frame(instance = rownames(t(data)), count = as.numeric(t(data)))
+data <- data %>% dplyr::filter(grepl("201",instance))  # Filtering columns with year in it
+data$year <- vapply(strsplit(as.character(data$instance), " - ", fixed = TRUE), "[", "", 1)
+data$type <- vapply(strsplit(as.character(data$instance), " - ", fixed = TRUE), "[", "", 2)
+data$transport <- vapply(strsplit(as.character(data$instance), " - ", fixed = TRUE), "[", "", 3)
+data <- data %>% filter(!is.na(transport))
+dplyr::sample_n(data, 5)
+```
+
+The contingency table for the year 2017 is   
+
+```{r activities5, echo=TRUE}
+contingency_table <- data %>% filter(year == 2017) %>% 
+  dplyr::select(type, transport, count) %>% 
+  spread(type, count)
+library(kableExtra)
+kable(contingency_table,
+      caption = 'Contingency Table') %>% 
+  kable_styling(full_width = F) %>%
+  column_spec(1, bold = T) %>%
+  collapse_rows(columns = 1:2, valign = "middle") %>% 
+  scroll_box()
+
+```
+
+A Mosaic plot for the same is:  
+```{r summary_stats1, echo=FALSE}
+data <- data %>% filter(year == 2017) %>% dplyr::select(type, transport, count)
+data$transport <- vapply(strsplit(as.character(data$transport), " ", fixed = TRUE), "[", "", 1)
+```
+
+
+```{r summary_stats, echo=TRUE}
+library(ggmosaic)
+ggplot(data = data) +
+  geom_mosaic(aes(weight = count, x = product(transport), fill = type), na.rm=TRUE) +
+  labs(x = 'Type of transport', y='%',  title = 'What type of transport to use') +
+    theme_minimal()+theme(legend.position="bottom")
+```
+
+From the above plot I can observe that there is a significant difference in the percentages of fatalities in each transport. To find if this percent is significant, I will conduct a chi-square test of independence.  
+
+```{r real_plots, echo=TRUE}
+library(gmodels)
+# Converting contingency table to flat tables
+# Two vectors to hold values of columns
+caseType <- c();  conditionType <- c()
+
+# For each cell, repeat the rowname, colname combo 
+# as many times
+for(i in 1:nrow(contingency_table)) {
+  for(j in 2:ncol(contingency_table)) {
+    numRepeats <- contingency_table[i, j]
+    
+    caseType <- append(caseType, 
+                       rep(contingency_table[i,1],
+                           numRepeats))
+    conditionType <- append(conditionType, 
+                        rep(colnames(contingency_table)[j],
+                            numRepeats))
+  }
+}
+
+# Construct the table from the vectors
+flatTable <- data.frame(caseType, conditionType)
+CrossTable(flatTable$caseType, flatTable$conditionType,
+           dnn=c("Transportation Type", "Accident type"),
+           expected=TRUE)
+```
+
+```{r chi-sq-test-function-creation, include=FALSE}
+# Functions used in chi-sq-test
+
+chi.sq.plot <- function(pop.mean=0, alpha = 0.05, chi.sq, df,
+                              label = 'Chi Square distribution',title = 'Chi Square goodness of fit test'){
+  # Creating a sample chi-sq distribution
+  range <- seq(qchisq(0.0001, df), qchisq(0.9999, df), by = (qchisq(0.9999, df)-qchisq(0.0001, df))*0.001)
+  chi.sq.dist <- data.frame(range = range, dist = dchisq(x = range, ncp = pop.mean, df = df)) %>% 
+    dplyr::mutate(H0 = if_else(range <= qchisq(p = 1-alpha, ncp = pop.mean, df = df,lower.tail = TRUE),'Retain', 'Reject'))
+  # Plotting sampling distribution and x_bar value with cutoff
+  plot.test <- ggplot(data = chi.sq.dist, aes(x = range,y = dist)) +
+    geom_area(aes(fill = H0)) +
+    scale_color_manual(drop = TRUE, values = c('Retain' = "#00BFC4", 'Reject' = "#F8766D"), aesthetics = 'fill') +
+    geom_vline(xintercept = chi.sq, size = 2) +
+    geom_text(aes(x = chi.sq, label = paste0('Chi Sq = ', round(chi.sq,3)), y = mean(dist)), colour="blue", vjust = 1.2) +
+    labs(x = label, y='Density',  title = title) +
+    theme_minimal()+theme(legend.position="bottom")
+  plot(plot.test)
+}
+```
+
+
+```{r chi-sq, echo=TRUE}
+chi.test <- chisq.test(contingency_table[,2:3], rescale.p = TRUE)
+print(chi.test)
+chi.sq.plot(chi.sq = chi.test$statistic, df = chi.test$parameter, title = 'Null hypothesis to test independence')
+```
+
+As p < a, where a = 0.05, I reject the Null hypothesis. There is a significant difference in the mortality rate with different vehicles. Travelling on two-wheeler is the safest while bicycle is the most dangerous.  
+Created on 24th June 2019, Achyuthuni Sri Harsha
