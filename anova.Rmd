@@ -1,5 +1,5 @@
 ---
-title: "Anova and Chi-sq test of independence"
+title: "Analysis of Variance"
 author: "Harsha Achyuthuni"
 date: "July 16 2019"
 output: html_document
@@ -11,98 +11,79 @@ knitr::opts_chunk$set(
 	message = FALSE,
 	warning = FALSE
 )
-library(tidyverse)
-set.seed(0512)
-setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance')
-travel <- read_csv("travel.csv")
 ```
 
-In this post, I would like to look into AnOVa and Chi-sq test of independance. From the attendance data set, I would like to understand if there is any significant difference in my travelling time to office when I use diffeent types of transportation.  
+In this post, I would like to look into Anova hypothesis testing. The dataset I am going to use is published in https://smartcities.data.gov.in which is a Government of India project under the  National Data Sharing and Accessibility Policy.   
 
-As I want to test that there is significant difference between travelling time when I use different types of transport, the null and alternate hypothesis will be as follows:  
-H0: μvehicle = μwalking = μcycling  
-H1: Not all μ are equal
+I want to analyse if the unemployment across Bangalore is similar or are threre pockets with high unemployment. The [Unemployment_Rate_Bengaluru.csv](https://smartcities.data.gov.in/catalog/city-profile-bengaluru?filters%5Bfield_catalog_reference%5D=2916949&format=json&offset=0&limit=9&sort%5Bcreated%5D=desc) dataset has total employed and unemployed people in Bangalore at a Ward level. For simplicity sake, I want to concentrate on three zones, Bangalore-east, Mahadevpura and Rajeshwari Nagar.  
 
-Sample attendance data set (necessary columns only) are: 
+As I want to test that there is significant difference between unemployment rate in different zones in Bangalore, the null and alternate hypothesis will be as follows:  
+H0: muBangalore-east = muMahadevpura = muRajeshwari-Nagar  
+H1: Not all mu are equal  
+
+Sample unemployment data set: 
 ```{r activities4, echo=FALSE}
-dplyr::sample_n(travel %>% dplyr::select(date, main_activity, travelling.time), 5)
-travel$travelling.time <- as.numeric(travel$travelling.time)
+setwd("C:/Users/achyuthuni.harsha/Documents/IIMB")
+library(tidyverse)
+library(e1071)
+unemployment <- read_csv('Unemployment_Rate_Bengaluru_ason_01-03-2011_1.csv')
+colnames(unemployment) <- c('cityName', 'zoneName', 'wardName', 'wardNo', 'unemployed.no', 'employed.no', 'total.labour')
+unemployment <- unemployment %>% mutate(rate = unemployed.no/total.labour) %>% filter(zoneName %in% c('East', 'Mahadevapura', 'Rajarajeswari Nagar'))
+dplyr::sample_n(unemployment, 5)
 ```
 
-Plotting the frequencies of different types of transportation. This is the number of times I have used that particular transport to travel to office.  
+Visualizing the difference of unemployment in each zone.  
 
-```{r activities5, echo=FALSE}
-ggplot(travel, aes(x = main_activity, group = main_activity, fill = main_activity)) + 
-  geom_bar()  + 
-  guides(fill = FALSE) +
-  theme_minimal() +
-  labs(
-    x = "",
-    y = "Count",
-    title = "Type of transport"
-  )
+```{r activities5, echo=TRUE}
+ggplot(unemployment, aes(x=zoneName, y= rate, group = zoneName)) + 
+  geom_boxplot() +
+  labs(x='Zone', y='Unemployment %') + 
+  theme_minimal()
 ```
 
-The summary statistics of travelling time for different types of transportation are as follows:  
+The summary statistics of unemployment across different zones are as follows:  
 ```{r summary_stats, echo=TRUE}
-data.summary <- travel %>% 
-  rename(group = main_activity) %>% 
+data.summary <- unemployment %>% 
+  rename(group = zoneName) %>% 
   group_by(group) %>% 
   summarise(count = n(), 
-            mean = mean(travelling.time),
-            sd = sd(travelling.time))
+            mean = mean(rate),
+            sd = sd(rate),
+            skewness = skewness(rate),
+            kurtosis = kurtosis(rate))
 data.summary
 ```
 
-One of the conditions to do anova is that the population response variable follows a normal distribution in each group. The distribution of travelling time with different types of transport are as follows:
+From the above table I observe that the unemployment rate is between 54% and 57% in all the three zones.  
+
+One of the conditions to perform anova is that the population response variable follows a normal distribution in each group. The distribution of unemployment rate in diffeent zones are:
 
 ```{r real_plots, echo=TRUE}
 ggplot() + 
-  geom_density(data=travel, aes(x=travelling.time, group=main_activity, color=main_activity), adjust=2) +
-  labs(x = 'Travelling time(sec)', y='Density',  title = 'Testing normality among response variables') +
+  geom_density(data=unemployment, aes(x=rate, group=zoneName, color=zoneName), adjust=2) +
+  labs(x = 'Unemployment Rate', y='Density',  title = 'Testing normality among response variables') +
   theme_minimal()+theme(legend.position="bottom")
 ```
 
-From the above graph, it looks like the three groups are normally distributed. To test for normality, we could use chi-square test.  
-The chi-square goodness of fit test for each group would have the following hypothesis:  
-H0: The transportation.time in the group is normally distributed  
-H1: The transportation.time in the group is not normally distributed 
-```{r chi-sq-test-function-creation, echo=TRUE}
-# Functions used in chi-sq-test
-
-chi.sq.plot <- function(pop.mean=0, alpha = 0.05, chi.sq, df,
-                              label = 'Chi Square distribution',title = 'Chi Square goodness of fit test'){
-  # Creating a sample chi-sq distribution
-  range <- seq(qchisq(0.0001, df), qchisq(0.9999, df), by = (qchisq(0.9999, df)-qchisq(0.0001, df))*0.001)
-  chi.sq.dist <- data.frame(range = range, dist = dchisq(x = range, ncp = pop.mean, df = df)) %>% 
-    dplyr::mutate(H0 = if_else(range <= qchisq(p = 1-alpha, ncp = pop.mean, df = df,lower.tail = TRUE),'Retain', 'Reject'))
-  # Plotting sampling distribution and x_bar value with cutoff
-  plot.test <- ggplot(data = chi.sq.dist, aes(x = range,y = dist)) +
-    geom_area(aes(fill = H0)) +
-    scale_color_manual(drop = TRUE, values = c('Retain' = "#00BFC4", 'Reject' = "#F8766D"), aesthetics = 'fill') +
-    geom_vline(xintercept = chi.sq, size = 2) +
-    geom_text(aes(x = chi.sq, label = paste0('Chi Sq = ', round(chi.sq,3)), y = mean(dist)), colour="blue", vjust = 1.2) +
-    labs(x = label, y='Density',  title = title) +
-    theme_minimal()+theme(legend.position="bottom")
-  plot(plot.test)
-}
-```
-
-```{r chi-sq, echo=TRUE}
+From the above graph, it looks like the three groups are normally distributed. To test for normality, we could use Shapiro-Wilk test.  
+The test for each group would have the following hypothesis:  
+H0: The unemployment rate in the group is normally distributed  
+H1: The unemployment rate in the group is not normally distributed 
+```{r shaprio-wilk, echo=TRUE}
 for(i in 1:nrow(data.summary)){
-  mean <- data.summary$mean[i]
-  sd <- data.summary$sd[i]
-  length <- data.summary$count[i]
-  range <- seq(mean-3*sd, mean+3*sd, by = sd*0.001)
-  norm.dist <- rnorm(n = length, mean = mean, sd = sd)
-  test.dist <- (travel %>% dplyr::filter(main_activity == data.summary$group[i]))$travelling.time
+  test.dist <- (unemployment %>% dplyr::filter(zoneName == data.summary$group[i]))$rate
   cat('Testing for group ', data.summary$group[i], '\n')
-  chi.test <- chisq.test(norm.dist, test.dist)
-  print(chi.test)
-  chi.sq.plot(chi.sq = chi.test$statistic, df = chi.test$parameter, title = data.summary$group[i])
+  print(shapiro.test(test.dist))
+  norm.plot <- ggplot() + 
+    geom_qq(aes(sample = test.dist)) +
+    stat_qq_line(aes(sample = test.dist)) +
+    ggtitle(paste0("Normal distribution Q-Q plot for group ",data.summary$group[i])) +
+    theme_minimal()
+  plot(norm.plot)
 }
 ```
-As p > α, where α = 0.05, retaining the Null hypothesis in all the three groups. Therefore we can assume that travelling.time is normally distributed among all groups.  
+
+As p > a, where a = 0.01, retaining the Null hypothesis in all the three groups. Therefore we can assume that unemployment rate is normally distributed among all groups.  
 
 Another condition for anova is that the population variances are assumed to be same. This is an assumption I am willing to take at this point.  
 
@@ -111,7 +92,6 @@ Taking these assumptions, the ideal distributions of the sample are as follows. 
 ```{r normal_plots, echo=TRUE}
 plot.normal.groups <- function(data.summary, mean, sd, label, title){
   common.group.sd <- mean(data.summary$sd)
-
   range <- seq(mean-3*sd, mean+3*sd, by = sd*0.001)
   norm.dist <- data.frame(range = range, dist = dnorm(x = range, mean = mean, sd = sd))
   # Plotting sampling distribution and x_bar value with cutoff
@@ -124,18 +104,15 @@ plot.normal.groups <- function(data.summary, mean, sd, label, title){
   norm.aov.plot + labs(x = label, y='Density',  title = title) +
       theme_minimal()+theme(legend.position="bottom")
 }
-
-
-
 set.seed(9)
-mean <- mean(travel$travelling.time)
-sd <- sd(travel$travelling.time)
+mean <- mean(unemployment$rate)
+sd <- sd(unemployment$rate)
 plot.normal.groups(data.summary, mean, sd, 'Travel time (sec)', 'Assuming normality among response variables')
 ```
 
-Performing Anova with 
-H0: μvehicle = μwalking = μcycling
-H1: Not all μ are equal
+Performing Anova with  
+H0: muBangalore-east = muMahadevpura = muRajeshwari-Nagar  
+H1: Not all mu are equal    
 
 ```{r anova-test-function-creation, echo=TRUE}
 # Functions used in anova-test
@@ -159,17 +136,30 @@ f.plot <- function(pop.mean=0, alpha = 0.05, f, df1, df2,
 ```
 
 ```{r anova, echo=TRUE}
-anva <- aov(travelling.time ~ main_activity, travel)
+anva <- aov(rate ~ zoneName, unemployment)
 anova.summary <- summary(anva)
 print(anova.summary)
 f.plot(f = anova.summary[[1]]$F[1], df1 = anova.summary[[1]]$Df[1], df2 = anova.summary[[1]]$Df[2])
 ```
 
-As p < α, where α = 0.05. Hence rejecting the Null Hypothesis. From this test we can observe that not all groups have same mean. But to find out which groups are similar and which are different, I am conducting a TukeyHSD test.  
+Here p < a, where a = 0.05 Hence rejecting the Null Hypothesis. From this test we can observe that not all groups have same mean. But to find out which groups are similar and which are different, I am conducting a TukeyHSD test.  
+
 ```{r tukeyHSD, echo=TRUE}
-TukeyHSD(anva)
+tukey.test <- TukeyHSD(anva)
+print(tukey.test)
+
+# Plot pairwise TukeyHSD comparisons and color by significance level
+tukey.df <- as.data.frame(tukey.test$zoneName)
+tukey.df$pair = rownames(tukey.df)
+ggplot(tukey.df, aes(colour=cut(`p adj`, c(0, 0.01, 0.05, 1), 
+                           label=c("p<0.01","p<0.05","Non-Sig")))) +
+  geom_hline(yintercept=0, lty="11", colour="grey30") +
+  geom_errorbar(aes(pair, ymin=lwr, ymax=upr), width=0.2) +
+  geom_point(aes(pair, diff)) +
+  labs(x = 'Groups', y='Density',  colour="", title = 'Tukey HSD Test') +
+    theme_minimal()+theme(legend.position="bottom")
 ```
 
-From this test we can see that there is significant difference (with α = 0.05 confidence) between travelling by vehicle when compared to travelling by walk or cycle.  
+From this test we can see that there is significant difference (with a = 0.05 confidence) between Rajeshwari Nagar and Bangalore East.    
 
 Created on 17th June 2019, Achyuthuni Sri Harsha
