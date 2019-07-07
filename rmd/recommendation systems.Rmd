@@ -1,0 +1,82 @@
+---
+title: "Recommendation systems"
+author: "Harsha Achyuthuni"
+date: "03/07/2019"
+output: html_document
+---
+
+Association mining is commonly used to make product recommendations by identifying products that are frequently bought together. It is a common technique used to find associations between many variables. It is often used by grocery stores, e-commerce websites, and anyone with large transaction databases. A most common example that we encounter in our daily lives — Amazon knows what else you want to buy when you order something on their site.  
+  
+Based on the concept of strong rules, [Rakesh Agrawal, Tomasz Imieliński and Arun Swami](http://citeseer.ist.psu.edu/viewdoc/summary?doi=10.1.1.217.4132) introduced association rules for discovering regularities between products in large-scale transaction data recorded by point-of-sale (POS) systems in supermarkets.   
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+## Associate mining in R
+
+[Michael Hahsler](https://michael.hahsler.net/) has authored and maintains two very useful R packages relating to association rule mining: the arules package and the arulesViz package.  
+
+```{r library, echo=TRUE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(arulesViz)
+library(arules)
+library(kableExtra)
+```
+
+### Data and EDA
+
+There’s a [public data](http://www.salemmarafi.com/wp-content/uploads/2014/03/groceries.csv) of buying records in a grocery store. The data looks like below.  
+
+```{r read-data, echo=TRUE}
+data <- read.transactions('groceries.csv', format = 'basket', sep=',')
+inspect(head(data))
+```
+
+I want to find the most frequently bought items.  
+```{r eda1, echo=TRUE}
+itemFrequencyPlot(data, topN = 20, type = "absolute")
+```
+
+I want to find the items that are bought frequently together  
+```{r eda2, echo=TRUE, paged.print=TRUE}
+freq.items <- eclat(data, parameter = list(supp = 0.01, maxlen = 15))
+inspect(head(freq.items))
+```
+
+### Product recommendation rules
+
+There are three parameters controlling the number of rules to be generated viz. Support, Lift and Confidence.   
+
+Support is an indication of how frequently the item set appears in the data set.   
+$$Support = \frac{Number\ of\ transactions\ with\ both\ A\ and\ B}{Total\ number\ of\ transactions} = P\left(A \cap B\right)$$
+
+Confidence is an indication of how often the rule has been found to be true.   
+$$Confidence = \frac{Number\ of\ transactions\ with\ both\ A\ and\ B}{Total\ number\ of\ transactions\ with\ A} = \frac{P\left(A \cap B\right)}{P\left(A\right)}$$
+
+Lift is the factor by which, the co-occurrence of A and B exceeds the expected probability of A and B co-occurring, had they been independent. So, higher the lift, higher the chance of A and B occurring together.  
+$$Lift = \frac{Confidence}{Expected\ Confidence} = \frac{P\left(A \cap B\right)}{P\left(A\right).P\left(B\right)}$$
+ 
+```{r apriori, echo=TRUE}
+rules <- apriori(data, parameter = list(support = 0.0015, confidence = 0.9))
+rules_optim <- rules[]
+inspect(rules_optim)
+```
+
+lhs is “left hand side” and rhs is “right hand side”. In the first low, it’s for the result about “if a customer buy liquor and red/blush wine, which is in lhs column, will the customer buy bottled beer, which is in rhs column?”    
+ 
+To find the item pairs in descending order of support, lift and confidence.    
+```{r sort1, echo=TRUE}
+inspect(sort(rules_optim, by="confidence", decreasing = T))
+inspect(sort(rules_optim, by="support", decreasing = T))
+inspect(sort(rules_optim, by="lift", decreasing = T))
+```
+```{r plot, echo=TRUE}
+plot(rules_optim[1:7], method = "graph")
+```
+
+By changing the support and confidence cutoffs, we can get better recommendations.  

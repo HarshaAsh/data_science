@@ -37,13 +37,13 @@ Uni-variate plots provide one way to find out about those properties. There are 
 
 For the current tutorial, I will be using my office attendance data set. The data set contains the time when I swiped into office and the time when I swiped out of office. Data from 4th October 2017 to  29th November 2018.
 ```{r import_data_set, include=FALSE}
-setwd('C:/Users/achyuthuni.harsha/Downloads')
-attendance <- read.csv("Attendance_Detail_29_11.csv")
+setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data/')
+attendance <- read.csv("Attendance_Detail.csv")
 ```
 After some manipulation on the data set, I will get the difference between policy out-time and my actual out-time. I can leave from 15 minutes before the policy out time. A sample of the data after manipulation is as follows: (Actual data is not shown for security reasons. This is mock data which is very similar to the actual one.)
 ```{r attendance_dataset_manupulation, echo=FALSE}
 attendance <- attendance %>% 
-  filter(Was.at.Work == 'True') %>% 
+  filter(Was.at.Work) %>% 
   mutate(in.time.dmy.hm = dmy_hm(paste(Attendance.Date, In.Time)),
          out.time.dmy.hm = dmy_hm(paste(Attendance.Date, Last.Out.Time)),
          post.midnight = (out.time.dmy.hm - in.time.dmy.hm < 0))
@@ -184,14 +184,17 @@ The other summary plots are of various types:
 2. Density Plots: A density plot is a plot of the local relative frequency or density of points along the number line or x-axis of a plot. The local density is determined by summing the individual "kernel" densities for each point. Where points occur more frequently, this sum, and consequently the local density, will be greater. 
 
 ```{r histogram, echo=TRUE}
+legendcols <- c("Normal distribution"="darkred","Density"="darkBlue","Histogram"="lightBlue")
 ggplot(attendance,aes(x = as.numeric(diff.out.time))) +
-  stat_function(fun = dnorm, color="darkred",  size = 1,
+  geom_histogram(aes(y=..density.., fill ="Histogram"), bins = 50) +
+    stat_function(fun = dnorm, aes(color="Normal distribution"),  size = 1,
                 args = list(mean = mean(as.numeric(attendance$diff.out.time)),
                                          sd = sd(as.numeric(attendance$diff.out.time)) )) +
-  geom_density(aes(y=..density..), color="darkblue",  size = 1)+
-  geom_histogram(aes(y=..density..), bins = 50, fill = "cornflowerblue", alpha = 0.2) +
+  geom_density(aes(y=..density.., color="Density"),  size = 1)+
+  scale_colour_manual(name="Distribution",values=legendcols) +
+  scale_fill_manual(name="Bar",values=legendcols) +
   labs(x = 'Out-time difference (minutes)', y='Density') +
-  theme_minimal()
+  theme_minimal() + theme(legend.position="bottom")
 ```
 
 In the above graph, the red line is normal distribution(with the same mean and sd) while the blue line is the density plot of in-time.
@@ -228,13 +231,16 @@ From the above graph I am approximating my distribution to an exponential distri
 lamda <- 1/mean(sd(as.numeric(attendance$diff.out.time)),mean(as.numeric(attendance$diff.out.time)))
 exp.curve <- function(x){
                 lamda*exp(-lamda*(x +15))
-             }
+}
+legendcols <- c("Exponential distribution"="darkred","Density"="darkBlue","Histogram"="lightBlue")
 ggplot(attendance,aes(x = as.numeric(diff.out.time))) +
-  stat_function(fun = exp.curve, color="darkred",  size = 1) +
-  geom_density(aes(y=..density..), color="darkblue",  size = 1)+
-  geom_histogram(aes(y=..density..), bins = 50, fill = "cornflowerblue", alpha = 0.2) +
-  labs(x = 'In-time difference (minutes)', y='Density') +
-  theme_minimal()
+  geom_histogram(aes(y=..density.., fill ="Histogram"), bins = 50) +
+  stat_function(fun = exp.curve, aes(color="Exponential distribution"),  size = 1) +
+  geom_density(aes(y=..density.., color="Density"),  size = 1)+
+  scale_colour_manual(name="Distribution",values=legendcols) +
+  scale_fill_manual(name="Bar",values=legendcols) +
+  labs(x = 'Out-time difference (minutes)', y='Density') +
+  theme_minimal() + theme(legend.position="bottom")
 ```
 
 In the above graph, the red line is exponential distribution( lambda = 1/mean, mean = mean of the distribution) while the blue line is the density plot of in-time.  

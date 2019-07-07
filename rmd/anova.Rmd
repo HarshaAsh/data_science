@@ -23,13 +23,17 @@ H1: Not all mu are equal
 
 Sample unemployment data set: 
 ```{r activities4, echo=FALSE}
-setwd("C:/Users/achyuthuni.harsha/Documents/IIMB")
+setwd("F:\\System")
 library(tidyverse)
 library(e1071)
+library(kableExtra)
 unemployment <- read_csv('Unemployment_Rate_Bengaluru_ason_01-03-2011_1.csv')
 colnames(unemployment) <- c('cityName', 'zoneName', 'wardName', 'wardNo', 'unemployed.no', 'employed.no', 'total.labour')
 unemployment <- unemployment %>% mutate(rate = unemployed.no/total.labour) %>% filter(zoneName %in% c('East', 'Mahadevapura', 'Rajarajeswari Nagar'))
-dplyr::sample_n(unemployment, 5)
+kable(dplyr::sample_n(unemployment, 5),
+      caption = 'Sample Data') %>% 
+  kable_styling(full_width = F) %>%
+  collapse_rows(columns = 1:2, valign = "middle")
 ```
 
 Visualizing the difference of unemployment in each zone.  
