@@ -1,5 +1,5 @@
 # Data Science in R
-This repository contains the code used for my blog, RPubs and Shinyapps
+This repository contains the code used for my blog, [RPubs](http://rpubs.com/harshaash) and Shinyapps
 
 ## Exploratory Data Analytics
 1.	[Univariate Analysis (in-time problem)](http://www.harshaash.website/univariate-analysis/)
@@ -14,7 +14,7 @@ This repository contains the code used for my blog, RPubs and Shinyapps
 4.	[Chi Square test of independence (smart cities data)](http://www.harshaash.website/chi-square-test-of-independence/)
  
 ## Other posts
-1.  [Reccomendation System](http://www.harshaash.website/recommendation-systems/)
+1.  [Recomendation System](http://www.harshaash.website/recommendation-systems/)
 2.  [Handling Google Maps Location Data (in-time problem)](http://www.harshaash.website/handling-google-maps-location-data/)
 3.	[Class size paradox (using Amrita University placement data)](http://www.harshaash.website/class-size-paradox/)
 
