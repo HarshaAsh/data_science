@@ -37,7 +37,7 @@ Uni-variate plots provide one way to find out about those properties. There are 
 
 For the current tutorial, I will be using my office attendance data set. The data set contains the time when I swiped into office and the time when I swiped out of office. Data from 4th October 2017 to  29th November 2018.
 ```{r import_data_set, include=FALSE}
-setwd('C:/Users/Achyuthuni/Desktop/attendance/EDA/data')
+setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data/')
 attendance <- read.csv("Attendance_Detail.csv")
 ```
 After some manipulation on the data set, I will get the difference between policy out-time and my actual out-time. I can leave from 15 minutes before the policy out time. A sample of the data after manipulation is as follows: (Actual data is not shown for security reasons. This is mock data which is very similar to the actual one.)

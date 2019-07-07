@@ -25,7 +25,7 @@ Sample data set:
 ```{r activities4, echo=FALSE}
 library(tidyverse)
 library(e1071)
-data <- read_csv('Injuries_and_Fatalities_Bengaluru_from_2016to2018.csv')[1,]
+data <- read_csv('F:\\System\\Injuries_and_Fatalities_Bengaluru_from_2016to2018.csv')[1,]
 data <- data.frame(instance = rownames(t(data)), count = as.numeric(t(data)))
 data <- data %>% dplyr::filter(grepl("201",instance))  # Filtering columns with year in it
 data$year <- vapply(strsplit(as.character(data$instance), " - ", fixed = TRUE), "[", "", 1)

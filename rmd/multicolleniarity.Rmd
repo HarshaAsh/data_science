@@ -18,7 +18,7 @@ library(ggplot2)
 library(MASS)
 library(kableExtra)
 set.seed(0512)
-travel <- read.csv('travel.csv') %>% filter(hours.worked > 9)
+travel <- read.csv('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data/travel.csv') %>% filter(hours.worked > 9)
 ```
 
 I want to go thru some basic statistical concepts before starting with the problem. I want to explain what is multicolleniarity and how and when to tackle it.  

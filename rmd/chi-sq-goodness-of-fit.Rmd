@@ -13,7 +13,7 @@ knitr::opts_chunk$set(
 )
 library(tidyverse)
 set.seed(0512)
-setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance')
+setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data')
 data <- read_csv("travel.csv")
 data <- data %>% filter(diff.out.time >= 0)
 data <- data %>% rename(alt.distr = diff.out.time)

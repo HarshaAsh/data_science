@@ -18,7 +18,7 @@ library(MASS)
 library(knitr)
 library(kableExtra)
 set.seed(0512)
-travel <- read.csv('travel.csv')
+travel <- read.csv('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data/travel.csv')
 ```
 
 ## Introduction

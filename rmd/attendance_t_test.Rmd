@@ -22,7 +22,7 @@ Z test and t test are used when a claim is made about the population parameter s
   
 I will try to explain it using a problem that I faced recently.  
 ```{r import_data_set, include=FALSE}
-setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance/EDA')
+setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data')
 attendance <- read.csv("Attendance_Detail.csv")
 ```
 
