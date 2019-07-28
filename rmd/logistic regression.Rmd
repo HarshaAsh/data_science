@@ -1,0 +1,533 @@
+---
+title: "Logistic Regression"
+output:
+  html_document:
+    df_print: paged
+---
+Date: 27-07-2019  
+Author: Achyuthuni Sri Harsha
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+library(tidyverse)
+library(caret)
+library(gridExtra)
+library(MASS)
+library(stringr)
+set.seed(0512)
+```
+
+## Introduction
+
+This post can be found at [www.harshaash.website](http://www.harshaash.website/logistic-regression/)
+
+Classification problems are an important category of problems in analytics in which the response variable $Y$ takes a discrete value. For example, a classification goal is to analyse what sorts of people were likely to survive the titanic.   
+The data used in this blog is taken from a very famous problem in [Kaggle](https://www.kaggle.com/c/titanic/overview). Please visit the link for the data description and problem statement.   
+
+In particular, in this blog I want to use Logistic regression for the analysis. A sample of the data is given below:      
+
+```{r import_data_set, echo=FALSE}
+setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data')
+raw_df <- read_csv("titanic.csv")
+colnames(raw_df) <- make.names(colnames(raw_df))
+
+preProcValues <- preProcess(raw_df %>% dplyr::select(-one_of('PassengerId', 'Ticket', 'Cabin', 'Name', 'Survived')),
+                            method = c("knnImpute"),
+                            k = 20,
+                            knnSummary = mean)
+impute_df <- predict(preProcValues, raw_df, na.action = na.pass)
+
+procNames <- data.frame(col = names(preProcValues$mean), mean = preProcValues$mean, sd = preProcValues$std)
+for(i in procNames$col){
+ impute_df[i] <- impute_df[i]*preProcValues$std[i]+preProcValues$mean[i] 
+}
+raw_df <- na.omit(impute_df %>% mutate(Survived = as.factor(if_else(Survived==1, 'I', 'O')), Pclass = as.factor(Pclass)) %>% 
+  mutate_if(is.character, as.factor) %>% dplyr::select(-one_of('PassengerId', 'Ticket', 'Cabin', 'Name')))
+rm(impute_df)
+
+raw_df %>% sample_n(5)
+```
+
+The summary statistics for the data is:
+```{r summary, echo=FALSE}
+summary(raw_df)
+```
+## Data Cleaning and EDA
+
+Zero and Near Zero Variance features do not explain any variance in the predictor variable.  
+```{r data-cleaning, echo=TRUE}
+nearZeroVar(raw_df, saveMetrics= TRUE)
+```
+There are no near zero or zero variance columns
+
+Similarly I can check for linearly dependent columns among the continuous variables.
+```{r data-cleaning2, echo=TRUE}
+feature_map <- unlist(lapply(raw_df, is.numeric)) 
+findLinearCombos((raw_df[,feature_map]))
+```
+There are no linearly dependent columns. 
+
+### Uni-variate analysis
+Now, I want to do some basic EDA on each column. On each continuous column, I want to visually check the following:  
+1. Variation in the column  
+2. Its distribution  
+3. Any outliers   
+4. q-q plot with normal distribution  
+
+```{r univ-cont, echo=TRUE}
+cont_univ_df <- raw_df %>% select_if(is.numeric) %>% mutate(row_no = as.numeric(rownames(raw_df)))
+
+for(column in colnames(cont_univ_df[-ncol(cont_univ_df)])){
+  p1 <- ggplot(cont_univ_df, aes_string(x='row_no', y= column)) +
+    geom_point(show.legend = FALSE) +
+    labs(x = 'Univariate plot', y=column) +
+    ggtitle(column) +
+    theme_minimal()
+
+  # Cumulative plot
+  legendcols <- c("Normal distribution"="darkred","Density"="darkBlue","Histogram"="lightBlue")
+  p2 <- ggplot(cont_univ_df,aes_string(x = column)) +
+    geom_histogram(aes(y=..density.., fill ="Histogram"), bins = 50) +
+    stat_function(fun = dnorm, aes(color="Normal distribution"),  size = 1,
+                args = list(mean = mean(cont_univ_df[[column]]),
+                            sd = sd(cont_univ_df[[column]]))) +
+  geom_density(aes(y=..density.., color="Density"),  size = 1)+
+  scale_colour_manual(name="Distribution",values=legendcols) +
+  scale_fill_manual(name="Bar",values=legendcols) +
+  theme_minimal() + theme(legend.position="none")
+
+  p3 <- ggplot(cont_univ_df %>% mutate(constant = column),
+    aes_string(x="constant", y= column, group = 123)) +
+    geom_boxplot() +
+    labs(y=column) +
+    theme_minimal()
+
+  p4 <- ggplot(cont_univ_df,aes_string(sample = column)) +
+    stat_qq() + stat_qq_line() +
+    theme_minimal()
+  grid.arrange(p1, p2, p3, p4, nrow=2)
+}
+
+```
+
+For categorical variables, I want to look at the frequencies.  
+```{r univ-cat, echo=TRUE}
+univ_cat_df <- raw_df %>% select_if(function(col) {is.factor(col) | is.character(col)})
+for(column in colnames(univ_cat_df)){
+  plot(ggplot(univ_cat_df,aes_string(column)) +
+    geom_bar() + coord_flip() +
+    ggtitle(column) +
+    theme_minimal())
+}
+
+```
+
+From the above plot I infer that the data is unbalanced. But it might not be a problem as the unbalance ratio is less than 2:1.  
+
+### Bi variate analysis
+
+I want to understand the relationship of each continuous variable with the $y$ variable. I will achieve that by doing the following:  
+1. Plot box plot for each of the variables to do a visual comparison between the groups  
+2. Plot the explanatory variable distribution for both the variables to understand the variability uniquely explained (The non-intersecting part of the blue and the pink is the variation explained by the variable)    
+3. Predict using Logistic regression using the variable alone to observe the decrease in deviation/AIC  
+4. Plot Lorenz curve to compute Gini coefficient if applicable (high gini coefficient means that high inequality is caused by the column, which means more explain-ability)  
+
+```{r bi-cont, echo=TRUE, message=FALSE, warning=FALSE}
+library(gglorenz)
+library(ineq)
+plot_bivariate_cont <- function(raw_data, pred_column_name){
+  bi_var_df <- raw_df %>% select_if(is.numeric)
+  for(column in colnames(bi_var_df)){
+    p1 <- ggplot(raw_df,
+      aes_string(x = pred_column_name, y= column, group = pred_column_name)) +
+      geom_boxplot() +
+      labs(y=column) +
+      ggtitle(column) +
+      theme_minimal()
+    
+    p2 <- ggplot(raw_df, aes_string(x=column, fill=pred_column_name)) + 
+      geom_histogram(alpha=0.5, position="identity") +
+      theme_minimal()+ theme(legend.position="bottom")
+    
+    grid.arrange(p1, p2, nrow=1, widths = c(1,2))
+    
+    trainList_bi <- createDataPartition(y = unlist(raw_df[pred_column_name]), times = 1,p = 0.8, list = FALSE)
+    dfTest_bi <- raw_df[-trainList_bi,]
+    dfTrain_bi <- raw_df[trainList_bi,]
+    form_2 = as.formula(paste0(pred_column_name,' ~ ',column))
+    set.seed(1234)
+    objControl <- trainControl(method = "none",
+                             summaryFunction = twoClassSummary,
+                             # sampling = 'smote',
+                             classProbs = TRUE)
+    
+    cont_loop_caret_model <- train(form_2, data = dfTrain_bi,
+                           method = 'glm',
+                           trControl = objControl,
+                           metric = "ROC"
+                           )
+    print(summary(cont_loop_caret_model))
+    if(sum(raw_df[column]<0) == 0){
+      plot(ggplot(raw_df, aes_string(column)) +
+        gglorenz::stat_lorenz(color = "red") + 
+        geom_abline(intercept = 0, slope = 1, color = 'blue') +
+        theme_minimal())
+      print(paste0('Gini coefficient = ', Gini(unlist(raw_df[column]))))
+    }
+    print(strrep("-",100))
+  }
+}
+plot_bivariate_cont(raw_df, pred_column_name = 'Survived')
+```
+
+Observations:   
+1. From the box plot I observe that age and sibsp might not be significant factors. The same is reflected in the walds p value in the logistic regression. On the other hand, the gini coefficient is high for SibSp  
+2. Parch and Fare might be significant as I can observe a significant difference in the box plots.  
+
+I want to understand the relationship of each categorical variable with the $y$ variable. I will achieve that by doing the following:    
+1. A mosaic plot shows if any column is significantly different from base column  
+2. Predict using Logistic regression using the variable alone to observe the decrease in deviation/AIC  
+
+```{r bi-cat, echo=TRUE, message=FALSE, warning=FALSE}
+library(ggmosaic)
+plot_bivariate_cat <- function(raw_d, pred_column_name){
+  plot_bi_cat_df <- raw_df %>% select_if(function(col) {is.factor(col) | is.character(col)})
+  for(column in colnames(plot_bi_cat_df)){
+    if(column != pred_column_name){
+      plot(ggplot(data = plot_bi_cat_df %>% group_by_(pred_column_name,column) %>% summarise(count = n())) +
+        geom_mosaic(aes_string(weight = 'count', 
+                               x = paste0("product(", pred_column_name," , ", column, ")"), 
+                               fill = pred_column_name), na.rm=TRUE) +
+        labs(x = column, y='%',  title = column) +
+        theme_minimal()+theme(legend.position="bottom") +
+        theme(axis.text.x=element_text(angle = 45, vjust = 0.5, hjust=1)))
+      
+      trainList_cat <- createDataPartition(y = unlist(raw_df[pred_column_name]), times = 1,p = 0.8, list = FALSE)
+      dfTest_bi_cat <- raw_df[-trainList_cat,]
+      dfTrain_bi_cat <- raw_df[trainList_cat,]
+      form_2 = as.formula(paste0(pred_column_name,' ~ ',column))
+      set.seed(1234)
+      objControl <- trainControl(method = "none",
+                               summaryFunction = twoClassSummary,
+                               # sampling = 'smote',
+                               classProbs = TRUE)
+      
+      cat_loop_caret_model <- train(form_2, data = dfTrain_bi_cat,
+                             method = 'glm',
+                             trControl = objControl,
+                             metric = "ROC")
+      print(summary(cat_loop_caret_model))
+    }
+    print(strrep("-",100))
+  }
+}
+
+plot_bivariate_cat(balanced_df, pred_column_name = 'Survived')
+```
+Observations:  
+1. Gender seems to be a very important factor. The decrease in Residual due to that factor is very high.  
+2. There seems to be no significant difference between people embarked in Q vs C, but significant difference between C and S. From the plot, I could merge S and Q into one class for further analysis.   
+3. The class of the passenger seems to be an important factor.   
+
+### Correlation  
+
+The correlation between different variables is as follows  
+```{r corr3, echo=TRUE, message=FALSE, warning=FALSE}
+library(polycor)
+corHet <- hetcor(as.data.frame(raw_df %>% mutate_if(is.character,as.factor)))
+hetCorrPlot <- function(corHet){
+  melted_cormat <- reshape::melt(round(corHet,2), na.rm = TRUE)
+  colnames(melted_cormat) <- c('Var1', 'Var2', 'value')
+  melted_cormat <- melted_cormat %>% filter(!is.na(value))
+  
+  # Plot the corelation matrix
+  ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+  geom_tile(color = "black")+
+  scale_fill_gradient2(low = "red", high = "green", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Heterogeneous Correlation Matrix") +
+  theme_minimal()+ # minimal theme
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 10, hjust = 1))+
+  geom_text(aes(Var2, Var1, label = value), color = "black", size = 4)+
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.ticks = element_blank()
+  )
+  print(ggheatmap)
+}
+hetCorrPlot(corHet$correlations)
+```
+
+Observations:  
+1. Passenger class and fare are negatively correlated (obvious).  
+2. Pclass and sex are two variables that have good correlation with the y variable(survived).  
+
+## Initial Model Training
+For my initial model, I am training using step wise logistic regression. In every step, I want to observe the following:  
+1. What variables are added or removed from the model. The current model pics the column which gives the greatest reduction in AIC. The model stops when the reduction in AIC w.r.t. null is lower than the threshold.    
+2. Substantial increase/decrease in $\beta$ or change in its sign (which may be due to colliniarity between the dependent variables)  
+
+```{r train, echo=TRUE}
+modified_df <- raw_df %>% mutate(Embarked = if_else(Embarked == 'C', 'C', 'S_or_Q'))
+
+trainList <- createDataPartition(y = modified_df$Survived, times = 1,p = 0.8, list = FALSE)
+dfTest <- modified_df[-trainList,]
+dfTrain <- modified_df[trainList,]
+form_2 = as.formula(paste0('Survived ~ .'))
+set.seed(1234)
+objControl <- trainControl(method = "none",
+                         summaryFunction = twoClassSummary,
+                         classProbs = TRUE,
+                         # sampling = 'smote',
+                         savePredictions = TRUE)
+
+model <- train(form_2, data = dfTrain,
+                       method = 'glmStepAIC',
+                       trControl = objControl,
+                       metric = "ROC",
+                       direction = 'forward'
+                       )
+print(summary(model))
+```
+
+Observations:  
+1. Counter intuitively, both age and sibSp are significant features in the model while Parch and Fare are not. That might be due to Fare being explained by passenger class.  
+2. Gender, pclass are significant features while embarked is not  
+
+The model metrics for 50% cutoff are:
+```{r train-init, echo=TRUE}
+caretPredictedClass <- predict(object = model, dfTrain)
+confusionMatrix(caretPredictedClass,dfTrain$Survived)
+```
+
+### Model Diagnostics
+The created model can be validated using various tests such as the Omnibus test, Wald's test, Hosmer-Lemeshow's test etc. The assumptions in these hypothesis tests can be validated thru residual plots, and finally I want to check for multicolliniarity and Pseudo R square.  
+The Omnibus and Wald's test have the following Null hypothesis
+$$ Omnibus\, H_0 : \beta_1  = \beta_2 = ... = \beta_k = 0 $$
+$$ Omnibus\, H_1 : Not \, all\, \beta_i \,are\, 0 $$
+And for each variable in the model $i$, 
+$$ Wald's \, H_0 : \beta_i= 0 $$
+$$ Wald's \, H_1 : \beta_i \neq 0 $$
+Omnibus and Wald's p values are given in the below table
+```{r summary2, echo=FALSE}
+summary(model)
+```
+For all the factors for which p value is less than $\alpha=0.05$, I reject the Null hypothesis. These factors are significant factors for building the model.  
+  
+Hosmer Lemeshow test is a chi-square goodness of fit test to check if the logistic regression model fits the data. The Null hypothesis is that the model fits the data.   
+```{r fit test, echo=TRUE}
+library(ResourceSelection)
+dfTrain$pred_probability_I <- (predict(object = model, dfTrain,type = 'prob'))$I
+dfTrain$pred_probability_O <- (predict(object = model, dfTrain,type = 'prob'))$O
+
+dfTrain$predictions <- ifelse(dfTrain$pred_probability_I >= 0.5, 1, 0)
+dfTrain$binary <- ifelse(dfTrain$Survived == 'I', 1, 0)
+hoslem.test(dfTrain$predictions, dfTrain$binary, g = 10)
+```
+Since the p-value is greater than $\alpha=0.05$ I accept the null hypothesis that the logistic regression fits the data.  
+
+Some of the assumptions taken during the hypothesis tests are:  
+1. The mean of errors is zero  
+2. The errors have constant variance  
+3. The errors follow a normal distribution  
+These assumptions can be visually validated using residual plots  
+```{r residual, echo=TRUE}
+library(arm)
+binnedplot(fitted(model$finalModel), 
+           residuals(model$finalModel, type = "response"), 
+           nclass = NULL, 
+           xlab = "Expected Values", 
+           ylab = "Average residual", 
+           main = "Binned residual plot", 
+           cex.pts = 0.8, 
+           col.pts = 1, 
+           col.int = "gray")
+```
+
+The grey lines represent  ± 2$\sigma$ bands, which we would expect to contain about 95% of the observations. This model does look reasonable as the majority of the fitted values seem to fall inside the SE bands and are randomly distributed.    
+
+Like in case of linear regression, we should check for multicollinearity in the model. Multicollinearity is given by VIF. VIF above 4 means there is significant multicollinearity.   
+```{r vif, echo=TRUE}
+library(car)
+vif(model$finalModel)
+```
+No factor has high multicollinearity(VIF>4). 
+
+### Finding optimal cutoff  
+For finding the optimal cutoff, I am using three methods.  
+1. Classification plot  
+2. Youden's Index  
+3. Cost based approach  
+
+1. Classification plot
+```{r classification-plot, echo=TRUE, message=FALSE, warning=FALSE}
+ggplot(dfTrain, aes(x = pred_probability_I, fill = Survived)) + 
+      geom_histogram(alpha=0.5, position="identity") +
+      labs(x = 'Predicted probability', y='Count',  title = 'Classification plot',fill = 'Observed Groups') +
+      theme_minimal()+ theme(legend.position="bottom")
+```
+
+2. Youden's Index  
+Youdens index can be used to find cutoff when sensitivity and specificity are equally important. It is the point which has minimum distance from ROC curve.  
+$$ Youden's\, Index \, = \, \max_{p} (Sensitivity(p),Specificity(p)-1) $$
+
+```{r roc-train, echo=TRUE}
+library(ROCR)
+
+lgPredObj <- prediction(dfTrain$pred_probability_I, dfTrain$Survived,label.ordering = c('O', 'I'))
+lgPerfObj <- performance(lgPredObj, "tpr", "fpr")
+plot(lgPerfObj, main = "ROC Curve (train data)", col = 2, lwd = 2)
+abline(a = 0, b = 1, lwd = 2, lty = 3, col = "black")
+```
+
+It can also be visualized as the point where sensitivity and specificity are the same  
+
+```{r sens-spec, echo=TRUE, message=FALSE, warning=FALSE}
+sens_spec_plot <- function(actual_value, positive_class_name, negitive_class_name, pred_probability){
+  # Initialising Variables
+  specificity <- c()
+  sensitivity <- c()
+  cutoff <- c()
+  
+  for (i in 1:100) {
+    predList <- as.factor(ifelse(pred_probability >= i/100, positive_class_name, negitive_class_name))
+    specificity[i] <- specificity(predList, actual_value)
+    sensitivity[i] <- sensitivity(predList, actual_value)
+    cutoff[i] <- i/100
+  }
+  df.sens.spec <- as.data.frame(cbind(cutoff, specificity, sensitivity))
+  
+  ggplot(df.sens.spec, aes(x = cutoff)) +
+    geom_line(aes(y = specificity, color = 'Specificity')) +
+    geom_line(aes(y = sensitivity, color = 'Sensitivity'))+
+    labs(x = 'Cutoff p value', y='Sens/Spec',  title = 'Sensitivity-Specificity plot',fill = 'Plot') +
+      theme_minimal()+ theme(legend.position="bottom")
+}
+
+sens_spec_plot(actual_value = dfTrain$Survived, positive_class_name = 'I', negitive_class_name = 'O', pred_probability = dfTrain$pred_probability_I)
+
+```
+
+3. Cost based approach  
+
+I want to give penalties for positive and negatives. The optimal cutoff probability is the one which minimizes the total penalty cost, given by: 
+$$ \min_p[C_{01}P_{01} + C_{10}P_{10}] $$
+For example, if I want to give 3 times the importance to predicting survived when compared to not survived, the cost table is:  
+```{r costs table, echo=FALSE}
+costs = matrix(c(0, 1, 3, 0), ncol = 2)
+rownames(costs) <- c("pred I", "pred O")
+colnames(costs) <- c("act I", "act O")
+costs
+```
+For both the above approaches, the cutoff is:  
+
+```{r finding index, echo=TRUE, message=FALSE, warning=FALSE}
+find_p_cutoff <- function(actual_value, positive_class_name, negitive_class_name, pred_probability, p_01=1, p_10=1){
+  # Initialising Variables
+  msclaf_cost <- c()
+  youden_index <- c()
+  cutoff <- c()
+  P00 <- c() #correct classification of negative as negative (Sensitivity)
+  P01 <- c() #misclassification of negative class to positive class (actual is 0, predicted 1)
+  P10 <- c() #misclassification of positive class to negative class (actual 1 predicted 0)
+  P11 <- c() #correct classification of positive as positive (Specificity)
+  
+  costs = matrix(c(0, p_01, p_10, 0), ncol = 2)
+  
+  for (i in 1:100) {
+    predList <- as.factor(ifelse(pred_probability >= i/100, positive_class_name, negitive_class_name))
+    tbl <- table(predList, actual_value)
+    
+    # Classifying actual no as yes
+    P00[i] <- tbl[1]/(tbl[1] + tbl[2])
+    
+    P01[i] <- tbl[2]/(tbl[1] + tbl[2])
+    
+    # Classifying actual yes as no
+    P10[i] <- tbl[3]/(tbl[3] + tbl[4])
+    
+    P11[i] <- tbl[4]/(tbl[3] + tbl[4])
+    
+    cutoff[i] <- i/100
+    msclaf_cost[i] <- P10[i] * costs[3] + P01[i] * costs[2]
+    youden_index[i] <- P11[i] + P00[i] - 1
+  }
+  df.cost.table <- as.data.frame(cbind(cutoff, P10, P01, P11, P00, youden_index, msclaf_cost))
+  cat(paste0('The ideal cutoff for:\n Yodens Index approach : ', which.max(df.cost.table$youden_index)/100))
+  cat(paste0('\n Cost based approach : ', which.min(df.cost.table$msclaf_cost)/100))
+  ggplot(df.cost.table, aes(x = cutoff)) +
+    geom_line(aes(y = youden_index, color = 'yoden index')) +
+    geom_line(aes(y = msclaf_cost, color = 'misclassification cost'))+
+    labs(x = 'Cutoff p value', y='Index',  title = 'Cutoff p value',fill = 'Plot') +
+      theme_minimal()+ theme(legend.position="bottom")
+}
+
+find_p_cutoff(actual_value = dfTrain$Survived, positive_class_name = 'I', negitive_class_name = 'O', pred_probability = dfTrain$pred_probability_I, p_01 =3, p_10 = 1)
+
+```
+
+I am going to consider a cutoff of 0.38.
+
+Final training model metrics: 
+```{r train-conf, echo=TRUE}
+caretPredictedProb <- predict(object = model, dfTrain, type = 'prob')
+caretPredictedClass <- as.factor(ifelse(caretPredictedProb$I >= 0.38, 'I', 'O'))
+confusionMatrix(caretPredictedClass,dfTrain$Survived)
+
+# AUC, ROC and other metrics
+summary_set <- data.frame(obs = dfTrain$Survived, pred = caretPredictedClass, I = caretPredictedProb$I)
+twoClassSummary(summary_set, lev = levels(summary_set$obs))
+prSummary(summary_set, lev = levels(summary_set$obs))
+```
+
+## Validating the model on test data set
+
+### Confusion matrix/specificity and sensitivity metrics
+```{r test-conf, echo=FALSE}
+caretPredictedProb <- predict(object = model, dfTest, type = 'prob')
+caretPredictedClass <- as.factor(ifelse(caretPredictedProb$I >= 0.38, 'I', 'O'))
+confusionMatrix(caretPredictedClass,dfTest$Survived)
+```
+
+## ROC and lift charts
+
+```{r roc-test, echo=FALSE}
+library(ROCR)
+lgPredObj <- prediction(caretPredictedProb$I, dfTest$Survived,label.ordering = c('O', 'I'))
+roc_obj <- performance(lgPredObj, "tpr", "fpr")
+plot(roc_obj, main = "ROC Curve (test data)", col = 2, lwd = 2)
+abline(a = 0, b = 1, lwd = 2, lty = 3, col = "black")
+```
+```{r lift-chart, echo=TRUE}
+roc_obj <- performance(lgPredObj, "lift", "rpp")
+plot(roc_obj, main = "Lift chart (test data)", col = 2, lwd = 2)
+```
+```{r gain plot, echo=TRUE}
+trellis.par.set(caretTheme())
+gain_obj <- lift(Survived ~ predictions, data = dfTrain)
+ggplot(gain_obj) +
+  labs(title = 'Gain Chart') +
+  theme_minimal()
+```
+
+The accuracy metrics on the test set are as follows:
+```{r final, echo=FALSE}
+summary_set <- data.frame(obs = dfTest$Survived, pred = caretPredictedClass, I = caretPredictedProb$I)
+twoClassSummary(summary_set, lev = levels(summary_set$obs))
+prSummary(summary_set, lev = levels(summary_set$obs))
+```
+
+As our accuracy on the test set is similar to the accuracy on the training set and as all model validation checks are fine, I conclude that we can use Logistic regression to analyse what sort of people were likely to survive the titanic.  
+
+Summary:  
+Age, Passenger class and number of siblings are important metrics for the survival in titanic. Females, young people, people in higher class(proxy for rich people) and siblings had a higher chance of survival.    
+  
+Created by Harsha Achyuthuni. For more such links, visit [www.harshaash.website](http://www.harshaash.website/log-of-posts/)

@@ -1,0 +1,110 @@
+---
+title: "Missing value imputation using KNN"
+author: "Harsha Achyuthuni"
+date: "07/07/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Problem
+
+Real world data is not always clean. Its often messy and contains unexpected/missing values. In this post I will use a non-parametric algorithm called k-nearest-neighbors (KNN) to replace missing values.   
+
+### Data
+The data is technical spec of cars. I have taken this data set from [UCI Machine learning repository](https://archive.ics.uci.edu/ml/datasets/auto+mpg) which in turn took it form StatLib library which is maintained at Carnegie Mellon University. The data set was used in the 1983 American Statistical Association Exposition.   
+ 
+```{r cars, echo=FALSE, message=FALSE, warning=FALSE, paged.print=TRUE}
+library(tidyverse)
+library(RANN)
+library(kableExtra)
+cars_info <- read.csv('C:\\Users\\Achyuthuni\\Desktop\\BAI\\Tech Material\\Python\\Python_DS_2days\\data/Auto.csv')
+cars_info <- cars_info %>% mutate(horsepower = as.numeric(as.character(horsepower)),
+                                  origin = as.factor(origin))
+kable(dplyr::sample_n(cars_info, 5),
+      caption = 'Sample Data') %>% 
+  kable_styling(full_width = F) %>%
+  collapse_rows(columns = 1:2, valign = "middle") %>% 
+  scroll_box()
+```
+
+The data set contains the following columns:  
+1. mpg: continuous  (miles per gallon)  
+2. cylinders: multi-valued discrete 
+3. displacement: continuous (cu. inches)  
+4. horsepower: continuous  
+5. weight: continuous(lbs.)  
+6. acceleration: continuous (sec.)  
+7. model year: multi-valued discrete (modulo 100)  
+8. origin: multi-valued discrete (1. American, 2. European, 3. Japanese)   
+9. car name: string (unique for each instance)  
+
+Now I want to find if this data set contains any abnormal values.
+```{r find-na, echo=TRUE, paged.print=TRUE}
+summary(cars_info)
+```
+
+I find that horsepower contains 5 NA values. I can ignore the data points with horsepower NA, or I could impute the NA values using KNN or other methods. Before imputing, I want to make a strong case that my imputation would be right.  
+```{r na-cars1, echo=FALSE, paged.print=TRUE}
+missing_cars <- cars_info %>% filter(is.na(horsepower)) %>% dplyr::select(mpg, cylinders, displacement, weight, acceleration, year, origin, name)
+kable(missing_cars, caption = 'Cars with missing horsepower') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+```
+
+The assumption behind using KNN for missing values is that a point value can be approximated by the values of the points that are closest to it, based on other variables.  
+Let me take three variables from the above data set, mpg, acceleration and horsepower. Intuitively, these variables seem to be related.  
+```{r plot, echo=TRUE, paged.print=TRUE}
+ggplot(cars_info, aes(x = mpg, y = acceleration, color = horsepower)) + 
+  geom_point(show.legend = TRUE) +
+  labs(x = 'Mpg', y='Acceleration',  title = "Auto MPG",
+       color = 'Horsepower') + 
+  scale_color_gradient(low = "green", high = "red",
+                       na.value = "blue", guide = "legend") +
+  theme_minimal()+theme(legend.position="bottom")
+```
+
+In the above plot, the blue color points are null values. I can infer that cars of similar mpg and acceleration have similar horsepower. For a given missing value, I can look at the mpg of the car, its acceleration, look for its k nearest neighbors and get the cars horsepower.  
+I am using *preprocess* function in *caret* package for imputing NA's. The *K* value that I am taking is 20 (~ close to square root of number of variables)
+```{r knn-imputation, echo=TRUE, message=FALSE, warning=FALSE, paged.print=TRUE}
+library(caret)
+preProcValues <- preProcess(cars_info %>% 
+                          dplyr::select(mpg, cylinders, displacement, weight, acceleration, origin, horsepower),
+                            method = c("knnImpute"),
+                            k = 20,
+                            knnSummary = mean)
+impute_cars_info <- predict(preProcValues, cars_info,na.action = na.pass)
+```
+
+The *impute_cars_info* data set will be normalized. To de-normalize and get the original data back: 
+```{r na-cars, echo=TRUE, paged.print=TRUE}
+procNames <- data.frame(col = names(preProcValues$mean), mean = preProcValues$mean, sd = preProcValues$std)
+for(i in procNames$col){
+ impute_cars_info[i] <- impute_cars_info[i]*preProcValues$std[i]+preProcValues$mean[i] 
+}
+```
+
+
+The imputed horsepower for the missing data points is:  
+```{r cars1, echo=FALSE, paged.print=TRUE}
+final <- merge(impute_cars_info, missing_cars, by = c('name', 'year', 'origin','mpg', 'cylinders', 'displacement', 'weight', 'acceleration'))
+kable(final, caption = 'Imputed data set') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+```
+
+The actual hp for the cars are as follows:
+```{r actual-cars, echo=FALSE, paged.print=TRUE}
+final$actual_hp <- c(84,118,100,81,51)
+final$difference <- abs(final$actual_hp -final$horsepower)
+kable(final %>% dplyr::select(name, year, horsepower, actual_hp, difference), 
+      caption = 'Comparison') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+```
+
+Out of the 5 cars, I was able to impute horsepower for 2 cars with less than 10hp difference, one car within 15hp and two cars within 30hp difference. To get better results, I should use other imputation techniques. Generally these 5 cars are removed while doing any analysis. In R, you could find the removed data set as *mtcars*.   
+  
+This post is published at [www.harshaash.website/knn-imputation](http://www.harshaash.website/knn-imputation/). For similar posts, please visit [www.harshaash.website](http://www.harshaash.website/log-of-posts/)
