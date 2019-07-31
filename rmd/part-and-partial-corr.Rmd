@@ -1,0 +1,139 @@
+---
+title: "Part and partial correlation"
+output:
+  html_document:
+    df_print: paged
+---
+Date: 31-07-2019  
+Author: Achyuthuni Sri Harsha
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+library(tidyverse)
+library(caret)
+library(gridExtra)
+library(MASS)
+library(stringr)
+set.seed(0512)
+```
+
+## Introduction
+
+The concept of partial correlation and part correlation plays an important role in regression mdel building. I always had a confusion between the two. In this post, I would like to explore the difference between the two and understand how and where they are used.  
+
+The data and the problem statement along with explaination of the different kinds of correlation coefficients can be found from the textbook [Business Analytics: The Science of Data-Driven Decision Making](https://www.wileyindia.com/business-analytics-the-science-of-data-driven-decision-making.html).  This post is largely inspired from the Example problem 10.1 found in Multiple linear regression chapter in the book.  
+
+The cumulative television ratings(CTRP), money spent on promotions(P) and advertisement revenue for 38 different television programmes are given in the data.  
+
+```{r import_data_set, echo=FALSE}
+raw_df <- read_csv("C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data/CTRP.csv") %>% dplyr::select(-one_of('Serial'))
+colnames(raw_df) <- make.names(colnames(raw_df))
+raw_df %>% sample_n(5)
+```
+
+The summary statistics for the data is:  
+```{r summary, echo=FALSE}
+summary(raw_df)
+```
+
+### Univariate analysis
+Now, I want to do some basic EDA on each column. On each continuous column, I want to visually check the following:  
+1. Variation in the column  
+2. Its distribution  
+3. Any outliers   
+4. q-q plot with normal distribution  
+
+```{r univ-cont, echo=FALSE}
+cont_univ_df <- raw_df %>% select_if(is.numeric) %>% mutate(row_no = as.numeric(rownames(raw_df)))
+
+for(column in colnames(cont_univ_df[-ncol(cont_univ_df)])){
+  p1 <- ggplot(cont_univ_df, aes_string(x='row_no', y= column)) +
+    geom_point(show.legend = FALSE) +
+    labs(x = 'Univariate plot', y=column) +
+    ggtitle(column) +
+    theme_minimal()
+
+  # Cumulative plot
+  legendcols <- c("Normal distribution"="darkred","Density"="darkBlue","Histogram"="lightBlue")
+  p2 <- ggplot(cont_univ_df,aes_string(x = column)) +
+    geom_histogram(aes(y=..density.., fill ="Histogram"), bins = 50) +
+    stat_function(fun = dnorm, aes(color="Normal distribution"),  size = 1,
+                args = list(mean = mean(cont_univ_df[[column]]),
+                            sd = sd(cont_univ_df[[column]]))) +
+  geom_density(aes(y=..density.., color="Density"),  size = 1)+
+  scale_colour_manual(name="Distribution",values=legendcols) +
+  scale_fill_manual(name="Bar",values=legendcols) +
+  theme_minimal() + theme(legend.position="none")
+
+  p3 <- ggplot(cont_univ_df %>% mutate(constant = column),
+    aes_string(x="constant", y= column, group = 123)) +
+    geom_boxplot() +
+    labs(y=column) +
+    theme_minimal()
+
+  p4 <- ggplot(cont_univ_df,aes_string(sample = column)) +
+    stat_qq() + stat_qq_line() +
+    theme_minimal()
+  grid.arrange(p1, p2, p3, p4, nrow=2)
+}
+
+```
+
+
+There are two factors that explain R ($y$), namely P and CTRP. I want to see indivedually how much they will be able to explain the total variance in $y$. The total varation in $y$ explained by $x$ is given by R square value of the regression. The R square and $\beta$ values for bothe the independent variables when taken indivedually are as follows:  
+
+```{r bi-cont, echo=FALSE, message=FALSE, warning=FALSE}
+plot_bivariate_cont <- function(raw_data, pred_column_name){
+  bi_var_df <- raw_df %>% select_if(is.numeric)
+  for(column in colnames(bi_var_df)){
+    if(column != pred_column_name){
+      trainList_bi <- createDataPartition(y = unlist(raw_df[pred_column_name]), times = 1,p = 0.8, list = FALSE)
+      dfTest_bi <- raw_df[-trainList_bi,]
+      dfTrain_bi <- raw_df[trainList_bi,]
+      form_2 = as.formula(paste0(pred_column_name,' ~ ',column))
+      set.seed(1234)
+      objControl <- trainControl(method = "none",
+                               summaryFunction = defaultSummary)
+      
+      cont_loop_caret_model <- train(form_2, data = dfTrain_bi,
+                             method = 'lm',
+                             trControl = objControl,
+                             metric = "RMSE"
+                             )
+      print(summary(cont_loop_caret_model))
+      print(strrep("-",100)) 
+    }
+  }
+}
+plot_bivariate_cont(raw_df, pred_column_name = 'R')
+```
+
+From the above outcome, I observe the following:  
+1. The total variation in $y$ explained by CTRP and P indevedually are 28.15% and 35.58% respectively. (From R-square in the above results)  
+2. The $\beta$ coefficients of CTRP and P are 4175 and 2.527 respectively. That means for every unit change in CTRP, the Revenue increases by 4175 units while for every change in P the revenue increases by 2.527 units.  
+
+If both CTRP and P are independent, then I would think that if I tried to use both the variables in the model, then
+1. The tyotal explainable variation in $y$ should be 28.15 + 35.58 = 63.73%. That means the model's R square should be 0.6373  
+2. The $\beta$ cofficients should be same as before  
+
+Lets build a regression model using both these variables. In this model, the $y$ variable (Revenue R) is explained using P (promotions) and CTRP. The output is shown below.  
+```{r train, echo=FALSE}
+form_2 = as.formula(paste0('R~.'))
+set.seed(1234)
+objControl <- trainControl(method = "none",
+                         summaryFunction = defaultSummary)
+
+model <- train(form_2, data = raw_df,
+                       method = 'lmStepAIC',
+                       trControl = objControl,
+                       metric = "RMSE")
+print(summary(model))
+predictions <- predict(object = model, raw_df)
+```
+
+The total R-squared is 0.8319 which means that the total variation in $y$ explained is 83.19%. We were expecting a r-squared of 0.6373. Even the $\beta$ of CTRP is 593.2 which was 4175 before. That means that for every one unit change in CTRP, only 593.2 units of Revenue will change, instead of 4175 as we thought before.  
+So what is happening here?  
