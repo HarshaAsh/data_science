@@ -18,19 +18,24 @@ library(caret)
 library(gridExtra)
 library(MASS)
 library(stringr)
+library(limma)
+library(tidyverse)
+library(ggforce)
 set.seed(0512)
 ```
 
+This post can be found at [www,harshaash.website](http://www.harshaash.website/part-and-partial-correlation/)  
+
 ## Introduction
 
-The concept of partial correlation and part correlation plays an important role in regression mdel building. I always had a confusion between the two. In this post, I would like to explore the difference between the two and understand how and where they are used.  
+The concept of partial correlation and part correlation plays an important role in regression model building. I always had a confusion between the two. In this post, I would like to explore the difference between the two and understand how and where they are used.  
 
-The data and the problem statement along with explaination of the different kinds of correlation coefficients can be found from the textbook [Business Analytics: The Science of Data-Driven Decision Making](https://www.wileyindia.com/business-analytics-the-science-of-data-driven-decision-making.html).  This post is largely inspired from the Example problem 10.1 found in Multiple linear regression chapter in the book.  
+The data and the problem statement along with explanation of the different kinds of correlation coefficients can be found from the textbook [Business Analytics: The Science of Data-Driven Decision Making](https://www.wileyindia.com/business-analytics-the-science-of-data-driven-decision-making.html).  This post is largely inspired from the Example problem 10.1 found in Multiple linear regression chapter in the book.  
 
-The cumulative television ratings(CTRP), money spent on promotions(P) and advertisement revenue for 38 different television programmes are given in the data.  
+The cumulative television ratings(CTRP), money spent on promotions(P) and advertisement revenue for 38 different television programmed are given in the data.  
 
 ```{r import_data_set, echo=FALSE}
-raw_df <- read_csv("C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data/CTRP.csv") %>% dplyr::select(-one_of('Serial'))
+raw_df <- read_csv("../data/CTRP.csv") %>% dplyr::select(-one_of('Serial'))
 colnames(raw_df) <- make.names(colnames(raw_df))
 raw_df %>% sample_n(5)
 ```
@@ -40,51 +45,7 @@ The summary statistics for the data is:
 summary(raw_df)
 ```
 
-### Univariate analysis
-Now, I want to do some basic EDA on each column. On each continuous column, I want to visually check the following:  
-1. Variation in the column  
-2. Its distribution  
-3. Any outliers   
-4. q-q plot with normal distribution  
-
-```{r univ-cont, echo=FALSE}
-cont_univ_df <- raw_df %>% select_if(is.numeric) %>% mutate(row_no = as.numeric(rownames(raw_df)))
-
-for(column in colnames(cont_univ_df[-ncol(cont_univ_df)])){
-  p1 <- ggplot(cont_univ_df, aes_string(x='row_no', y= column)) +
-    geom_point(show.legend = FALSE) +
-    labs(x = 'Univariate plot', y=column) +
-    ggtitle(column) +
-    theme_minimal()
-
-  # Cumulative plot
-  legendcols <- c("Normal distribution"="darkred","Density"="darkBlue","Histogram"="lightBlue")
-  p2 <- ggplot(cont_univ_df,aes_string(x = column)) +
-    geom_histogram(aes(y=..density.., fill ="Histogram"), bins = 50) +
-    stat_function(fun = dnorm, aes(color="Normal distribution"),  size = 1,
-                args = list(mean = mean(cont_univ_df[[column]]),
-                            sd = sd(cont_univ_df[[column]]))) +
-  geom_density(aes(y=..density.., color="Density"),  size = 1)+
-  scale_colour_manual(name="Distribution",values=legendcols) +
-  scale_fill_manual(name="Bar",values=legendcols) +
-  theme_minimal() + theme(legend.position="none")
-
-  p3 <- ggplot(cont_univ_df %>% mutate(constant = column),
-    aes_string(x="constant", y= column, group = 123)) +
-    geom_boxplot() +
-    labs(y=column) +
-    theme_minimal()
-
-  p4 <- ggplot(cont_univ_df,aes_string(sample = column)) +
-    stat_qq() + stat_qq_line() +
-    theme_minimal()
-  grid.arrange(p1, p2, p3, p4, nrow=2)
-}
-
-```
-
-
-There are two factors that explain R ($y$), namely P and CTRP. I want to see indivedually how much they will be able to explain the total variance in $y$. The total varation in $y$ explained by $x$ is given by R square value of the regression. The R square and $\beta$ values for bothe the independent variables when taken indivedually are as follows:  
+There are two factors that explain R, namely P and CTRP. I want to see individually how much they will be able to explain the total variance in $y$. The total proportion of the variation in $y$ explained by $x$ is given by R square value of the regression. The R square and $\beta$ values for both the independent variables when taken individually are as follows:  
 
 ```{r bi-cont, echo=FALSE, message=FALSE, warning=FALSE}
 plot_bivariate_cont <- function(raw_data, pred_column_name){
@@ -112,13 +73,22 @@ plot_bivariate_cont <- function(raw_data, pred_column_name){
 plot_bivariate_cont(raw_df, pred_column_name = 'R')
 ```
 
-From the above outcome, I observe the following:  
-1. The total variation in $y$ explained by CTRP and P indevedually are 28.15% and 35.58% respectively. (From R-square in the above results)  
-2. The $\beta$ coefficients of CTRP and P are 4175 and 2.527 respectively. That means for every unit change in CTRP, the Revenue increases by 4175 units while for every change in P the revenue increases by 2.527 units.  
+The outcome is as follows:
+For CTRP
+$$Y = 677674 + 4175CTRP + \epsilon_{CTRP} \qquad Eq(1)$$
+where $\epsilon_{CTRP}$ is the unexplained error due to CTRP.  
 
-If both CTRP and P are independent, then I would think that if I tried to use both the variables in the model, then
-1. The tyotal explainable variation in $y$ should be 28.15 + 35.58 = 63.73%. That means the model's R square should be 0.6373  
-2. The $\beta$ cofficients should be same as before  
+Similarly, for P,
+$$ Y = 87740 + 2.527P + \epsilon_{P} \qquad Eq(2)$$
+where $\epsilon_{P}$ is the unexplained error due to P
+
+From the above outcome, I observe the following:  
+1. The total proportion of variation in $y$ explained by CTRP and P individually are 28.15% and 35.58% respectively. (From R-square in the above results)  
+2. The $\beta$ coefficients of CTRP and P are 4175 and 2.527 respectively. That means for every unit change in CTRP, the revenue increases by 4175 units while for every change in P the revenue increases by 2.527 units.  
+
+If both CTRP and P are independent, then I would think that if I tried to use both the variables in the model, then  
+1. The total explainable variation in $y$ should be 28.15 + 35.58 = 63.73%. That means the model's R square should be 0.6373  
+2. The $\beta$ coefficients should be same as before  
 
 Lets build a regression model using both these variables. In this model, the $y$ variable (Revenue R) is explained using P (promotions) and CTRP. The output is shown below.  
 ```{r train, echo=FALSE}
@@ -128,12 +98,140 @@ objControl <- trainControl(method = "none",
                          summaryFunction = defaultSummary)
 
 model <- train(form_2, data = raw_df,
-                       method = 'lmStepAIC',
+                       method = 'lm',
                        trControl = objControl,
                        metric = "RMSE")
 print(summary(model))
 predictions <- predict(object = model, raw_df)
 ```
 
-The total R-squared is 0.8319 which means that the total variation in $y$ explained is 83.19%. We were expecting a r-squared of 0.6373. Even the $\beta$ of CTRP is 593.2 which was 4175 before. That means that for every one unit change in CTRP, only 593.2 units of Revenue will change, instead of 4175 as we thought before.  
+
+The outcome is as follows:
+$$Y = 41018 + 5932CTRP + 3.136P + \epsilon \qquad Eq(3) $$
+where $\epsilon$ is the unexplained error. 
+
+The total R-squared is 0.8319 which means that the total proportion of variation in $y$ explained is 83.19%. We were expecting a r-squared of 0.6373. Even the $\beta$ of CTRP is 5932 which was 4175 before. That means that for every one unit change in CTRP, 5932 units of Revenue will change (keeping P constant), instead of 4175 as we thought before.  
 So what is happening here?  
+
+Consider the following Venn diagram:  
+```{r venn, echo=FALSE}
+set.seed((123))
+mydata <- data.frame(A = rbinom(100, 1, 0.8),
+                     B = rbinom(100, 1, 0.7),
+                     C = rbinom(100, 1, 0.6)) %>%
+                       mutate_all(., as.logical)
+df.venn <- data.frame(x = c(0, 0.866, -0.866),
+                      y = c(1, -0.5, -0.5),
+                      labels = c('Y', 'CTRP', 'Promotion'))
+vdc <- vennCounts(mydata)
+class(vdc) <- 'matrix'
+df.vdc <- as.data.frame(vdc)[-1,] %>%
+  mutate(x = c(0, 1.2, 0.8, -1.2, -0.8, 0, 0),
+         y = c(1.2, -0.6, 0.5, -0.6, 0.5, -1, 0)) %>% 
+  mutate(lables = c('A', 'B', 'C', 'D', 'E', 'F', 'G'))
+ggplot(df.venn) +
+  geom_circle(aes(x0 = x, y0 = y, r = 1.5, fill = labels), alpha = .3, size = 1, colour = 'grey') +
+  coord_fixed() +
+  theme_void() +
+  theme(legend.position = 'bottom') +
+  scale_fill_manual(values = c('cornflowerblue', 'firebrick',  'gold')) +
+  scale_colour_manual(values = c('cornflowerblue', 'firebrick', 'gold'), guide = FALSE) +
+  labs(fill = NULL) +
+  annotate("text", x = df.vdc$x, y = df.vdc$y, label = df.vdc$lables, size = 5)
+
+```
+
+In the above diagram, the gold color is Y while the cornflower blue is CTRP and firebrick is Promotion. The area in circles show the variation in the variables. The intersection of 2 circles shows the variation explained in one variable by another variable.  
+
+I want to understand two things.  
+1. The increase in R squared due to addition of a variable. Assuming that the variable P already exists in the model, I would like to see how adding CTRP will change the R square value  
+2. How do I get the $\beta$ value of CTRP in the combined model (Equation 3). The $\beta_{CTRP}$ is nothing but the change when all other variables are kept constant, in this case when promotion is kept constant
+
+### Part or semi partial correlation
+Part of semi partial correlation explains how much additional variation is explained by including a new parameter. If Promotion was already existing in the model, and I introduce CTRP, the variance explained by CTRP alone would be C/(A+E+G+C).  
+
+To get the same I should remove the 'G' part in the above diagram. That can be achieved by removing the influence of promotion in CTRP and then doing a regression of the remaining part (B + C) with $y$.  
+
+The correlation coefficient when effect of other variables are removed from $x$ but not from $y$ is called as semi partial or part correlation coefficient.  
+
+The result of regression promotion with CTRP is as follows:  
+```{r CTRP-promotion, echo=FALSE}
+form_3 = as.formula(paste0('CTRP~P'))
+set.seed(1234)
+objControl <- trainControl(method = "none",
+                         summaryFunction = defaultSummary)
+
+model3 <- train(form_3, data = raw_df,
+                       method = 'lm',
+                       trControl = objControl,
+                       metric = "RMSE")
+print(summary(model3))
+pred_model <- raw_df
+pred_model$predicted_ctrp <- predict(object = model3, raw_df)
+pred_model$e_ctrp_p <- pred_model$CTRP - pred_model$predicted_ctrp
+```
+
+$$ CTRP = 141.7 -0.0001P + \epsilon_{P-CTRP} \qquad Eq(4)$$
+where $\epsilon_{P-CTRP}$ is the unexplained error in CTRP due to P (B and C part).
+
+The regression R-square of the unexplained error in CTRP with Y should give me the variation explained because of CTRP only.  
+```{r part-corr, echo=FALSE}
+form_4 = as.formula(paste0('R~e_ctrp_p'))
+set.seed(1234)
+objControl <- trainControl(method = "none",
+                         summaryFunction = defaultSummary)
+
+model4 <- train(form_4, data = pred_model,
+                       method = 'lm',
+                       trControl = objControl,
+                       metric = "RMSE")
+print(summary(model4))
+```
+
+$$ Y = 1200762.6 +5931.9\epsilon_{P-CTRP} + \epsilon \qquad Eq(5)$$
+where $\epsilon$ is the unexplained error in Y due to CTRP alone (G, E and A part).  
+
+From here I can infer that an additional 50% of the variation in y is explained by adding CTRP variable. This is called as the semi partial or part correlation. The sum of r-squared when p alone is present in the model (variation explained in y due to P (Equation 2) ie: E and G part in the Venn diagram) and the part correlation R-squared when CTRP is added in the model (variation explained only by CTRP removing P ie: C part in Venn  diagram) is close to the total R-Squared when both the variables are present in the model(equation 3). (see^i^) 
+
+### Partial correlation
+
+I want to understand how much Revenue changes with CTRP keeping Promotions constant ($\beta_{CTRP}$ in Equation 3), to do this, I should remove the effect of P from both Y(revenue) and promotion. The correlation coefficient I get from removing the effect of all other variables in both $y$ and $x$ is called partial correlation coefficient.  In the above Venn diagram, it is C/(C+A)  
+```{r partial-corr, echo=FALSE}
+form_1 = as.formula(paste0('R~P'))
+set.seed(1234)
+objControl <- trainControl(method = "none",
+                         summaryFunction = defaultSummary)
+
+model1 <- train(form_1, data = pred_model,
+                       method = 'lm',
+                       trControl = objControl,
+                       metric = "RMSE")
+
+pred_model$explained_P <- predict(object = model1, pred_model)
+pred_model$e_R_p <- pred_model$R - pred_model$explained_P
+
+
+form_6 = as.formula(paste0('e_R_p ~ e_ctrp_p'))
+set.seed(1234)
+objControl <- trainControl(method = "none",
+                         summaryFunction = defaultSummary)
+
+model6 <- train(form_6, data = pred_model,
+                       method = 'lm',
+                       trControl = objControl,
+                       metric = "RMSE")
+summary(model6)
+
+```
+$$ \epsilon_{P} = 2*10^{-10} +5932\epsilon_{P-CTRP} + \epsilon \qquad Eq(6)$$
+Note that the regression coefficient $\beta_{P-CTRP}$ from Equation 6 is nothing but the effect of CTRP keeping P constant. Therefore it is same as the partial regression coefficient $\beta_{CTRP}$ in the combined equation Equation 3.  
+
+For more such blogs and posts, visit [www.harshaash.website](http://www.harshaash.website/log-of-posts/)  
+
+References:  
+1. Kumar, U. Dinesh. [Business Analytics: The Science of Data-driven Decision Making](https://www.wileyindia.com/business-analytics-the-science-of-data-driven-decision-making.html). Wiley India, 2017.  
+2. Cohen, Patricia, Stephen G. West, and Leona S. Aiken. Applied multiple regression/correlation analysis for the behavioral sciences. Psychology Press, 2014. (and related [notes](https://www3.nd.edu/~rwilliam/stats1/x93b.pdf))  
+3. Venn diagrams in R from [scriptsandstatistics.wordpress.com](https://scriptsandstatistics.wordpress.com/2018/04/26/how-to-plot-venn-diagrams-using-r-ggplot2-and-ggforce/)
+
+----------------
+i. In this example the values are not exactly equal to each other because of [suppresser variable](https://stats.stackexchange.com/questions/9930/does-it-make-sense-for-a-partial-correlation-to-be-larger-than-a-zero-order-corr)
