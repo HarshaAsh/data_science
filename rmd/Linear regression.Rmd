@@ -1,0 +1,530 @@
+---
+title: "Linear Regression"
+output:
+  html_document:
+    df_print: paged
+---
+Date: 03-08-2019  
+Author: Achyuthuni Sri Harsha
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+library(tidyverse)
+library(caret)
+library(kableExtra)
+library(gridExtra)
+library(MASS)
+set.seed(0512)
+```
+
+This blog can be found at [www.harshaash.website](http://www.harshaash.website/linear-regression)  
+
+## Introduction
+
+Regression problems are an important category of problems in analytic s in which the response variable $Y$ takes a continuous value. For example, a regression goal is predicting housing prices in an area. In this blog post, I will attempt to solve a supervised regression problem using the famous Boston housing price data set. Other than location and square footage, a house value is determined by various other factors.  
+The data used in this blog is taken from [Kaggle](https://www.kaggle.com/c/boston-housing/overview). It originates from the UCI Machine Learning Repository. The Boston housing data was collected in 1978 and each of the 506 entries represent aggregated data about 14 features for homes from various suburbs in Boston, Massachusetts.  
+The data frame contains the following columns:  
+*crim*: per capita crime rate by town.  
+*zn*: proportion of residential land zoned for lots over 25,000 sq.ft.  
+*indus*: proportion of non-retail business acres per town.  
+*chas*: Charles River categorical variable (tract bounds or otherwise).  
+*nox*: nitrogen oxides concentration (parts per 10 million).  
+*rm*: average number of rooms per dwelling.  
+*age*: proportion of owner-occupied units built prior to 1940.  
+*dis*: weighted mean of distances to five Boston employment centers.  
+*rad*: index of accessibility to radial highways.  
+*tax*: full-value property-tax rate per \$10,000.  
+*ptratio*: pupil-teacher ratio by town.  
+*black*: racial discrimination factor.    
+*lstat*: lower status of the population (percent)  
+  
+The target variable is  
+*medv*: median value of owner-occupied homes in \$1000s.  
+
+In particular, in this blog I want to use multiple linear regression for the analysis. A sample of the data is given below:      
+
+```{r import_data_set, echo=FALSE}
+data("Boston")
+raw_df <- Boston
+colnames(raw_df) <- make.names(colnames(raw_df))
+raw_df <- raw_df %>% dplyr::select(-one_of('ID')) %>% mutate(chas = if_else(chas == 1, 'Tract_bounds', 'otherwise'))
+kable(raw_df %>% sample_n(5), caption = 'Sample data') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+```
+
+The summary statistics for the data is:
+```{r summary, echo=FALSE}
+summary(raw_df)
+```
+
+## Data Cleaning and EDA
+
+Zero and Near Zero Variance features do not explain any variance in the predictor variable.  
+```{r data-cleaning, echo=FALSE}
+kable(nearZeroVar(raw_df, saveMetrics= TRUE), caption = 'Zero and near zero variance') %>% 
+  kable_styling(full_width = T) %>%
+  scroll_box()
+```
+There are no near zero or zero variance columns
+
+Similarly I can check for linearly dependent columns among the continuous variables.
+```{r data-cleaning2, echo=FALSE}
+feature_map <- unlist(lapply(raw_df, is.numeric)) 
+findLinearCombos((raw_df[,feature_map]))
+```
+There are no linearly dependent columns.   
+
+### Uni-variate analysis
+Now, I want to do some basic EDA on each column. On each continuous column, I want to visually check the following:  
+1. Variation in the column  
+2. Its distribution  
+3. Any outliers   
+4. q-q plot with normal distribution  
+
+```{r univ-cont, echo=FALSE}
+cont_univ_df <- raw_df %>% select_if(is.numeric) %>% mutate(row_no = as.numeric(rownames(raw_df)))
+
+for(column in colnames(cont_univ_df[-ncol(cont_univ_df)])){
+  print(paste0('Univariate plots for ', column))
+  p1 <- ggplot(cont_univ_df, aes_string(x='row_no', y= column)) +
+    geom_point(show.legend = FALSE) +
+    labs(x = 'Univariate plot', y=column) +
+    ggtitle(column) +
+    theme_minimal()
+
+  # Cumulative plot
+  legendcols <- c("Normal distribution"="darkred","Density"="darkBlue","Histogram"="lightBlue")
+  p2 <- ggplot(cont_univ_df,aes_string(x = column)) +
+    geom_histogram(aes(y=..density.., fill ="Histogram"), bins = 50) +
+    stat_function(fun = dnorm, aes(color="Normal distribution"),  size = 1,
+                args = list(mean = mean(cont_univ_df[[column]]),
+                            sd = sd(cont_univ_df[[column]]))) +
+  geom_density(aes(y=..density.., color="Density"),  size = 1)+
+  scale_colour_manual(name="Distribution",values=legendcols) +
+  scale_fill_manual(name="Bar",values=legendcols) +
+  theme_minimal() + theme(legend.position="none")
+
+  p3 <- ggplot(cont_univ_df %>% mutate(constant = column),
+    aes_string(x="constant", y= column, group = 123)) +
+    geom_boxplot() +
+    labs(y=column) +
+    theme_minimal()
+
+  p4 <- ggplot(cont_univ_df,aes_string(sample = column)) +
+    stat_qq() + stat_qq_line() +
+    theme_minimal()
+  grid.arrange(p1, p2, p3, p4, nrow=2)
+}
+
+```
+
+For categorical variables, I want to look at the frequencies.  
+```{r univ-cat, echo=FALSE}
+raw_df_intr <- raw_df %>%
+  mutate(rm.lstat = rm*lstat)
+
+univ_cat_df <- raw_df_intr %>% select_if(function(col) {is.factor(col) | is.character(col)})
+for(column in colnames(univ_cat_df)){
+  plot(ggplot(univ_cat_df,aes_string(column)) +
+    geom_bar() + coord_flip() +
+    ggtitle(column) +
+    theme_minimal())
+}
+
+```
+
+Observations:  
+1. If I look at *rad* and *tax*, I observe that there seem to be two categories. Houses having rad < 10 follow a normal distribution, and there are some houses with rad = 24. As rad is an index, it could also be thought of as a categorical variable instead of a continuous variable.  
+2. For data points with *rad*= 25, the behavior in location based features looks different. For example *indus*, *tax* and *ptratio* have a different slope at the same points where the rad is 24. (observation for variation plots(top left plots))   
+
+Therefore I am tempted to group the houses which have rad = 24 into one category, and create interaction variables of that column with *rad*, *indus*, *ptratio* and *tax*. The new variable is called *rad_cat*. Also, I would like to convert *rad* itself to categorical and see if it can explain better than continuous variable.  
+Additionally, from researching on the internet, I found that the cost might have a different slope with the number of bedrooms for different class of people.  So, I want to visualize that interaction variable also.
+
+### Bi variate analysis
+
+I want to understand the relationship of each continuous variable with the $y$ variable. I will achieve that by doing the following:  
+1. A scatter plot to look at the relationship between the $x$ and the $y$ variables.  
+2. Draw a linear regression line and a smoothed means line to understand the curve fit.  
+3. Predict using Linear regression using the variable alone to observe the increase in R-squared.  
+
+```{r bi-cont, echo=FALSE, message=FALSE, warning=FALSE}
+plot_bivariate_cont <- function(raw_df, pred_column_name){
+  bi_var_df <- raw_df %>% select_if(is.numeric)
+  for(column in colnames(bi_var_df)){
+    trainList_bi <- createDataPartition(y = unlist(raw_df[pred_column_name]), times = 1,p = 0.8, list = FALSE)
+    dfTest_bi <- raw_df[-trainList_bi,]
+    dfTrain_bi <- raw_df[trainList_bi,]
+    form = as.formula(paste0(pred_column_name,' ~ ',column))
+    if(column != pred_column_name){
+      set.seed(1234)
+      objControl <- trainControl(method = "none",
+                               savePredictions = TRUE)
+  
+      reg_caret_model <- train(form, data = dfTrain_bi,
+                             method = 'lm', #lmStepAIC,
+                             trControl = objControl,
+                             metric = "RMSE"
+                             )
+      plot(ggplot(bi_var_df, aes_string(x=column, y= pred_column_name)) + 
+        geom_point(show.legend = TRUE) +
+        stat_smooth(method = "lm", col = "red") +
+          stat_smooth(col = 'blue')+
+        labs(y = pred_column_name, x=column,  title = column) + 
+        theme_minimal()+theme(legend.position="bottom")
+      )
+      print(summary(reg_caret_model))
+      print(strrep("-",100))
+    }
+  }
+}
+plot_bivariate_cont(raw_df = raw_df_intr, pred_column_name = 'medv')
+```
+
+Observations:   
+1. *Crim* and *black* might have a non linear relationship with *medv*, I want further analysis on that front.    
+2. As thought before *rad* might be better classified as a categorical variable.  
+3. *lmstat* and *lm* might have a quadratic relationship with *medv*.  
+
+I want to understand the relationship of each categorical variable with the $y$ variable. I will achieve that by doing the following:    
+1. A box plot showing the difference between variation of y between different classes of the variable.   
+2. Density plot for each class in the variable to understand the distribution and spread of each class. (If the means were far away from each other and both the classes have small standard deviation, then the variables explainability is more)  
+3. Predict using Linear regression using the variable alone to observe the increase in R-square    
+
+```{r bi-cat, echo=FALSE, message=FALSE, warning=FALSE}
+plot_bivariate_cat <- function(raw_df, pred_column_name){
+  plot_bi_cat_df <- raw_df %>% select_if(function(col) {is.factor(col) | is.character(col)})
+  for(column in colnames(plot_bi_cat_df)){
+    p2 <- ggplot() + 
+      geom_density(data=raw_df, aes_string(x=pred_column_name, group=column, color=column), adjust=2) +
+      labs(x = pred_column_name, y=column,  title = column) +
+      theme_minimal()+theme(legend.position="bottom")
+    p1 <- ggplot(raw_df, aes_string(y=pred_column_name, x = column, group=column)) + 
+    geom_boxplot() +
+    labs(y=pred_column_name, x=column) + 
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+    
+    grid.arrange(p1, p2, nrow=1)
+    
+    trainList_bi <- createDataPartition(y = unlist(raw_df[pred_column_name]), times = 1,p = 0.8, list = FALSE)
+    dfTest_bi <- raw_df[-trainList_bi,]
+    dfTrain_bi <- raw_df[trainList_bi,]
+    form = as.formula(paste0(pred_column_name,' ~ ',column))
+    dfTrain_bi <- na.omit(dfTrain_bi)
+    set.seed(1234)
+    objControl <- trainControl(method = "none",
+                             savePredictions = TRUE)
+    
+    reg_caret_model <- train(form, data = dfTrain_bi,
+                           method = 'lm', #lmStepAIC, 
+                           trControl = objControl,
+                           metric = "RMSE"
+                           )
+    print(summary(reg_caret_model))
+    print(strrep("-",100))
+  }
+  
+}
+
+plot_bivariate_cat(raw_df_intr %>% mutate(rad = as.factor(rad)), pred_column_name = 'medv')
+
+
+# models <- list(lm(y ~ x, data = raw_df), 
+#                lm(y ~ I(1 / x), data = dat),
+#                lm(y ~ log(x), data = dat),
+#                nls(y ~ I(1 / x * a) + b * x, data = dat, start = list(a = 1, b = 1)), 
+#                nls(y ~ (a + b * log(x)), data = dat, start = setNames(coef(lm(y ~ log(x), data = dat)), c("a", "b"))),
+#                nls(y ~ I(exp(1) ^ (a + b * x)), data = dat, start = list(a = 0,b = 0)),
+#                nls(y ~ I(1 / x * a) + b, data = dat, start = list(a = 1,b = 1))
+# )
+# 
+# # have a quick look at the visual fit of these models
+# library(ggplot2)
+# ggplot(raw_df, aes(black, medv)) + geom_point(size = 1) +
+#     stat_smooth(method = lm, formula = y ~ x, size = 1, se = FALSE, color = "black") +
+#     stat_smooth(method = lm, formula = I(y ~ 1/x), size = 1, se = FALSE, color = "blue") +
+#     stat_smooth(method = lm, formula = y ~ log(x), size = 1, se = FALSE, color = "yellow") +
+#     stat_smooth(method = nls, formula = y ~ I(1 / x * a) + b * x, data = raw_df, method.args = list(start = list(a = 100,b = 100)), size = 1, se = FALSE, color = "red", linetype = 2) +
+#     stat_smooth(method = nls, formula = y ~ (a + b * log(x)), data = raw_df, method.args = list(start = setNames(coef(lm(medv ~ log(black), data = raw_df)), c("a", "b"))), size = 1, se = FALSE, color = "green", linetype = 2) +
+#     stat_smooth(method = nls, formula = y ~ I(exp(1) ^ (a + b * x)), data = raw_df, method.args = list(start = list(a = 1,b = 0.5)), size = 1, se = FALSE, color = "violet") +
+#     stat_smooth(method = nls, formula = y ~ I(1 / x * a) + b, data = raw_df, method.args = list(start = list(a = 0,b = 0)), size = 1, se = FALSE, color = "orange", linetype = 2)
+```
+
+Observations:  
+1. *rad* as a categorical feature explains more as a categorical variable with R-Square of 0.2381 when compared to  continuous variable with a R-square of 0.155. From the box plot I can observe that the class 'rad24'  is different from all the other classes. That is what is being shown in the regression equation. If 'rad1' was my base class, then all other classes are similar except for 'rad24' which is significantly different from base class. This validates my initial creation of interaction variables with *rad_cat* too.  
+2. There seems to be significant difference between the houses that are Charles River track-bound or otherwise.  
+
+### Correlation  
+
+The correlation between different variables is as follows  
+```{r corr3, echo=FALSE, message=FALSE, warning=FALSE}
+library(polycor)
+corHet <- hetcor(as.data.frame(raw_df %>% mutate_if(is.character,as.factor)))
+hetCorrPlot <- function(corHet){
+  melted_cormat <- reshape::melt(round(corHet,2), na.rm = TRUE)
+  colnames(melted_cormat) <- c('Var1', 'Var2', 'value')
+  melted_cormat <- melted_cormat %>% filter(!is.na(value))
+  
+  # Plot the corelation matrix
+  ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+  geom_tile(color = "black")+
+  scale_fill_gradient2(low = "red", high = "green", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Heterogeneous Correlation Matrix") +
+  theme_minimal()+ # minimal theme
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 10, hjust = 1))+
+  geom_text(aes(Var2, Var1, label = value), color = "black", size = 3)+
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.ticks = element_blank()
+  )
+  print(ggheatmap)
+}
+hetCorrPlot(corHet$correlations)
+```
+
+Observations:  
+1. There is a lot of correlation between a large number of location based features like *dis* and *nox*, *dist* and *indus*, *dist* and *age*, *rm* and *lstat*, *lstat* and *indus* etc. The correlations between different (continuous) variables can be visualized below.  
+
+```{r corrPlot, echo=FALSE}
+library("qgraph")
+cormat <- round(cor(raw_df %>% select_if(is.numeric)), 2)
+qgraph(cormat, graph = "pcor", layout = "spring", legend.cex = 0.4)
+```
+
+## Initial Model Training
+For my initial model, I am training using step wise linear regression. In every step, I want to observe the following:  
+1. What variables are added or removed from the model. The current model pics the column which gives the greatest decrease in AIC. The model stops when the decrease in AIC w.r.t. null(no change) is lower than the threshold.    
+2. Substantial increase/decrease in $\beta$ or change in its sign (which may be due to colliniarity between the dependent variables)  
+
+```{r train, echo=FALSE}
+modified_df <- raw_df %>% 
+  mutate(rad_cat = if_else(rad != 24, 'loc<24', 'loc24')) %>%
+  dplyr::select(-one_of('rad'))
+set.seed(1234)
+trainList <- createDataPartition(y = modified_df$medv, times = 1,p = 0.8, list = FALSE)
+dfTest <- modified_df[-trainList,]
+dfTrain <- modified_df[trainList,]
+
+form_2 = as.formula(medv~.)# + rm:lstat)
+
+objControl <- trainControl(method = "none")
+
+model <- train(form_2, data = dfTrain,
+                       method = 'lmStepAIC', 
+                       trControl = objControl,
+                       metric = "RMSE",
+                       direction = 'both'
+                       )
+print(summary(model))
+```
+Summary:  
+1. Initially all the factors were considered in the model.  
+2. By removing *age* from the initial model, the AIC is 1295.5 vs 1297.43 in the initial model. Therefore *age* was removed.  
+3. By removing *industry* from the initial model, the AIC is 1293.6 vs the AIC of 1297.43. Therefore *industry* was removed.  
+4. Adding or removing any other variable does not decrease AIC significantly. The remaining factors are the best factors of the final model.  
+
+Observations:  
+1. For every unit increase in crime, the price decreases by 0.12 units.  
+2. For every large residential properties, the price increases by 0.0421 units.  
+3. For every unit increase in NOX(pollution) levels, the price decreases by -17.25 units.  
+4. The presence of Charles river in track bounds increases the price of the property by 2.03 units.  
+5. One extra room increases the price by 4.12  
+6. Increase in average distance from work centers by 1 unit decreases the price by 1.47 units.  
+7. Increase in tax by one unit decreases the price by -0.01 units.  
+8. Surprisingly, increasing the parent teacher ratio by one unit, decreases the price by 0.96 units.  
+9. Racial discrimination is still an important factor.   
+10.One unit increase of lower status of the population decreases the price by 0.52 units.  
+11.The presence of 'rad=24' increases the price by 5.6 units.  
+
+## Model diagnostics
+I want to look at R-Squared and adjusted R-Square of the model on the test data. R-Square explains the proportion of variation in $y$ explained by our dependent variables. Then I want to look at the statistical significance of individual variables (using t-test) and validation of complete model (using F test). Some basic assumptions for doing the tests are validated using residual analysis and finally I will look into multi-collinearity.  
+
+### The R-Squared and RMSE of the model on test data are:
+```{r model-diag, echo=FALSE}
+bh_pred <- predict(model, dfTest)
+postResample(pred = bh_pred, obs = dfTest$medv)
+# library(car)
+# vif(model$finalModel)
+```
+R-Square remains similar on the test set. Therefore we are not over-fitting.  
+
+### Testing statistical significance of individual dependent variables
+The Null hypothesis and alternate hypothesis for each of the dependent variables $i$ is:
+$$ H_0 : \beta_i= 0 $$
+$$ H_1 : \beta_i \neq 0 $$
+The statistical significance can be validated using a t-test.  
+
+### Validating the complete model  
+The null and alternate hypothesis for the model $y = \beta_0 + \beta_1x_1 + \beta_2x_2+...+\beta_kx_k + \epsilon$ is:
+$$ H_0 : \beta_1  = \beta_2 = ... = \beta_k = 0 $$
+$$ H_1 : Not \, all\, \beta_i \,are\, 0 $$
+The statistical significance can be validated using F test.  
+```{r summary2, echo=FALSE}
+print(summary(model))
+```
+From the above summary, I can observe that the *Pr(>|t|)* or p-value is less than the cutoff value of $\alpha = 0.05$ for all variables. Also the F-Statistic is 106.2 with a p value <2.2e-16. Thus I reject both the above null hypothesis. The model is statistically significant.   
+
+### Residual analysis
+Some of the assumptions in the above hypothesis tests are:  
+1. The mean of errors should be zero  
+2. The variance of the errors should be constant across $y$  
+3. The errors should be random. They should follow a random distribution  
+
+I can validate these three assumptions using the residual plots  
+```{r residual-plots, echo=FALSE}
+## Residual analysis for assumptions (independence, linearity, normality, and homoscedasticity)
+# layout(matrix(1:3, byrow = T, ncol = 1))
+plot(model$finalModel, which = 1:3)
+library(gvlma)
+gvlma(model$finalModel)
+```
+
+Observations:  
+None of the three conditions are properly satisfied. Certain outlier points seem to have a huge effect on the residuals and the model. As normality conditions are not met, I cannot trust the p values from above t and F statistics.    
+
+### Multi-collinearity  
+From the correlation matrix, I am expecting large multicollinearity between the features.  
+
+Variation inflation factor is the value by which the square of the estimate is inflated in presence of multi-collinearity. The t-statistic is thus deflated by $\sqrt(VIF)$ and standard error of estimate is inflated by $\sqrt(VIF)$.  
+$$ VIF = \frac{1}{1-(R_j)^2} $$
+Where $R_j$ is the regression correlation coefficient between $j$th variable and all other dependent variables.  
+A VIF of greater than 10 is considered bad. (decreases the t-value ~3.16 times, thus increasing p-value)  
+```{r vif, echo=FALSE}
+# bh_pred <- predict(model, dfTest)
+# postResample(pred = bh_pred, obs = dfTest$medv)
+library(car)
+vif(model$finalModel)
+```
+
+The t-value for *tax* and *rad_cat* variables are inflated by $\sqrt(VIF) = \sqrt(7.6) =2.7$. The corrected t-value would be  
+$$ t_{actual} = \frac{\beta_i}{S_e(\beta_i)} * \sqrt(VIF)  = t_{pred}*\sqrt(VIF$$
+Where t-predicted is the value of t in the summary table. Increasing t-value by ~2.7% decreases p further, and as both the values *tax* and *rad_cat* have p-values below 5%, increasing the t-value further will only decrease the p-value further making the two variables more significant.  
+
+### Testing over-fitting
+To prevent over fitting, it is important to find the ideal number of independent variables. Mallows's $C_p$ is used to identify the ideal number of features in the model. The best regression model is the model with the number of parameters close to $C_p$.  
+
+$$ C_p = \frac{SSE_p}{MSE_{full}} -(N-2p) $$
+Where N is the number of observations and p is the number of parameters.  
+The Mallows cp in our case is: 
+```{r mallows, echo=FALSE}
+library(olsrr)
+ols_mallows_cp(model$finalModel, lm(medv ~ ., dfTrain))
+```
+The number of features that are significant in the current model is 11.  
+
+### Auto correlation
+Durbin watson is a hypothesis test to test the existence of auto correlation. The null and alternate hypothesis are:  
+$$ H_0 : \rho_i= 0 $$
+$$ H_1 : \rho_i \neq 0 $$
+The test statistic is the durbin watson statistic $D$. D is between 0 and 4. D close to 2 implies absence of auto correlation.  
+```{r durbin-watson, echo=FALSE}
+library(car)
+## Independence (Do not rely on tests): Durbin-Watson test to detect serially correlated residuals (mainly for time series).
+durbinWatsonTest(model$finalModel)
+```
+As p value is less than cutoff at $\alpha =0.05$, there is no auto correlation. Auto correlation generally exists in time series data.   
+
+## Outlier analysis
+From the residual plots, I suspect that that there might be certain outliers that are adversely effecting the model. i am using the following distance measures to check for outliers in the model.  
+1. Mahalanobis distance: Distance between the observation and the centroid of the values  
+2. Leverages: Capacity of an observation to be influential due to having extreme predictor values (unusual combination of predictor values).  
+3. Jackknife residuals (studentized residual):  Division of residuals by its standard deviation  
+4. Cook's distance': Detects observations that have a disproportionate impact on the determination of the model parameters (large change in parameters if deleted).  
+5. DFBETAS: Changes in coefficients when the observations is deleted.  
+6. DFFITS: Change in the fitted value when the observation is deleted (standardized by the standard error)  
+7. hat: Diagonal elements of the hat matrix  
+8. cov.r: Co-variance ratios  
+
+The above metrics for sample 5 observations, and outlier plots (for significant metrics) are as follows:    
+```{r outlier-analysis, echo=FALSE}
+find_outlier_cutoff <- function(N, k){
+  #  the cutoff values for each of the fits
+  maha_cutoff <- qchisq(0.95, N-k-1) #degrees of freedon from summary
+  cooks_cutoff <- 4/(N-k-1)
+  leverage_cutoff <- 2*(k+1)/N
+  sdd_fit <- 2*sqrt((k+1)/N)
+  sdf_beta <- 2/sqrt(N)
+  return(data.frame(maha_cutoff, cooks_cutoff, leverage_cutoff, sdd_fit, sdf_beta))
+}
+cutoff_df <- find_outlier_cutoff(407, 11)
+
+outlier.df <- dfTrain %>% select_if(is.numeric)
+infl.mat <- influence.measures(model$finalModel)
+infl.df <- as.data.frame(infl.mat$infmat)
+infl.df$maha <- mahalanobis(outlier.df, colMeans(outlier.df), cov(outlier.df))
+kable(infl.df %>% arrange(-dffit) %>% top_n(5), caption = 'Outlier metrics') %>% 
+  kable_styling(full_width = T) %>%
+  scroll_box()
+
+
+infl2.df <- as.data.frame(infl.mat$is.inf)
+infl2.df$is.maha <- if_else(infl.df$maha > cutoff_df$maha_cutoff, TRUE, FALSE)
+infl2.df$residuals <- residuals(model$finalModel)
+infl2.df$y <- outlier.df$medv
+infl2.df$x <- predict(model, dfTrain)
+
+for(i in colnames(infl2.df)){
+  if(sum(infl2.df[i] == TRUE)){
+      plot(ggplot(infl2.df, aes_string(x='y', y= 'residuals', color = i)) + 
+        geom_point(show.legend = TRUE) + 
+        labs(title = i, color = 'Outlier') +
+        theme_minimal()+theme(legend.position="bottom"))
+  }
+}
+```
+
+Cooks distance and leverage values plots: 
+```{r outlier-plots, echo=FALSE}
+plot(model$finalModel, which = 4:6)
+```
+
+## Building a better model
+Now that I know all the problems that are present in the current model, I am build a better model taking care of all of them. The current model has the following problems:  
+1. Residuals are not normally distributed  
+2. Residuals do not have constant variance  
+3. Multicollinearity among variables  
+4. Outliers affecting $\beta$ coefficients  
+5. Low R-Squared  
+
+A slightly better model than the above is shown below.     
+```{r train-final, echo=FALSE}
+form_3 = as.formula(medv~ chas + 
+                      rm:lstat + 
+                      rm + I(1/rm) +
+                      age +
+                      poly(dis, degree = 2) + I(1/dis)+
+                      I(1/ptratio) +
+                      exp(black) +
+                      log(lstat) +sqrt(lstat)+
+                      poly(crim, degree = 2) +
+                      poly(zn, degree = 2) +
+                      exp(indus) +
+                      nox+
+                      I(1/tax) + sqrt(tax) +
+                      rad_cat)
+
+objControl <- trainControl(method = "none")
+
+model <- train(form_3, data = dfTrain,
+                       method = 'lmStepAIC', 
+                       trControl = objControl,
+                       metric = "RMSE",
+                       direction = 'both',
+                       trace = FALSE
+                       )
+print(summary(model))
+```
+
+Modelling is an iterative process. With more effort, I could get a better model using linear regression itself. Otherwise I could use other regression techniques to get better results.   
+
+Created by Harsha Achyuthuni. For more such links, visit [www.harshaash.website](http://www.harshaash.website/log-of-posts/)

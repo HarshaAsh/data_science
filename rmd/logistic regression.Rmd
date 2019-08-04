@@ -3,6 +3,7 @@ title: "Logistic Regression"
 output:
   html_document:
     df_print: paged
+  word_document: default
 ---
 Date: 27-07-2019  
 Author: Achyuthuni Sri Harsha
@@ -21,9 +22,9 @@ library(stringr)
 set.seed(0512)
 ```
 
-## Introduction
+This post can be found at [harshaash.website](http://www.harshaash.website/logistic-regression/). Please visit the [website](http://www.harshaash.website/log-of-posts/) for more such interesting posts.
 
-This post can be found at [www.harshaash.website](http://www.harshaash.website/logistic-regression/)
+## Introduction
 
 Classification problems are an important category of problems in analytics in which the response variable $Y$ takes a discrete value. For example, a classification goal is to analyse what sorts of people were likely to survive the titanic.   
 The data used in this blog is taken from a very famous problem in [Kaggle](https://www.kaggle.com/c/titanic/overview). Please visit the link for the data description and problem statement.   
@@ -309,7 +310,7 @@ confusionMatrix(caretPredictedClass,dfTrain$Survived)
 ```
 
 ### Model Diagnostics
-The created model can be validated using various tests such as the Omnibus test, Wald's test, Hosmer-Lemeshow's test etc. The assumptions in these hypothesis tests can be validated thru residual plots, and finally I want to check for multicolliniarity and Pseudo R square.  
+The created model can be validated using various tests such as the Omnibus test, Wald's test, Hosmer-Lemeshow's test etc. Outliers can be validated thru residual plot, mahalanobis distance and dffit values, and finally I want to check for multicolliniarity and Pseudo R square.  
 The Omnibus and Wald's test have the following Null hypothesis
 $$ Omnibus\, H_0 : \beta_1  = \beta_2 = ... = \beta_k = 0 $$
 $$ Omnibus\, H_1 : Not \, all\, \beta_i \,are\, 0 $$
@@ -334,11 +335,8 @@ hoslem.test(dfTrain$predictions, dfTrain$binary, g = 10)
 ```
 Since the p-value is greater than $\alpha=0.05$ I accept the null hypothesis that the logistic regression fits the data.  
 
-Some of the assumptions taken during the hypothesis tests are:  
-1. The mean of errors is zero  
-2. The errors have constant variance  
-3. The errors follow a normal distribution  
-These assumptions can be visually validated using residual plots  
+#### Checking for outliers:  
+A simple residual plot can be useful to check outliers.  
 ```{r residual, echo=TRUE}
 library(arm)
 binnedplot(fitted(model$finalModel), 
@@ -354,7 +352,20 @@ binnedplot(fitted(model$finalModel),
 
 The grey lines represent  ± 2$\sigma$ bands, which we would expect to contain about 95% of the observations. This model does look reasonable as the majority of the fitted values seem to fall inside the SE bands and are randomly distributed.    
 
-Like in case of linear regression, we should check for multicollinearity in the model. Multicollinearity is given by VIF. VIF above 4 means there is significant multicollinearity.   
+The mahalanobis distance gives the distance between the observation and the centroid of the values. An mahalanobis distance of greater than the chi-square critical value where the degrees of freedom is equal to number of independent variables is considered as an highly influential variable.  
+```{r outlier, echo=TRUE}
+maha.df <- dfTrain %>% dplyr::select(Age, SibSp)
+maha.df$maha <- mahalanobis(maha.df, colMeans(maha.df), cov(maha.df))
+maha.df <- maha.df %>% arrange(-maha) %>% mutate(is.outlier = if_else(maha>12, TRUE, FALSE))
+ggplot(maha.df, aes(y=Age, x= SibSp, color = is.outlier)) + 
+  geom_point(show.legend = TRUE) + 
+  theme_minimal()+theme(legend.position="bottom")
+```
+
+Although the model predicts that certain observations are outliers, I am not doing any outlier treatment as they are observations that I am interested in.  
+
+#### Checking for multi collinearity
+Like in case of linear regression, we should check for multi collinearity in the model. Multi collinearity is given by VIF. VIF above 4 means there is significant multicollinearity.   
 ```{r vif, echo=TRUE}
 library(car)
 vif(model$finalModel)
@@ -376,7 +387,7 @@ ggplot(dfTrain, aes(x = pred_probability_I, fill = Survived)) +
 ```
 
 2. Youden's Index  
-Youdens index can be used to find cutoff when sensitivity and specificity are equally important. It is the point which has minimum distance from ROC curve.  
+Youdens index can be used to find cutoff when sensitivity and specificity are equally important. It is the point which has minimum distance from ROC curve's (1, 1) point.  
 $$ Youden's\, Index \, = \, \max_{p} (Sensitivity(p),Specificity(p)-1) $$
 
 ```{r roc-train, echo=TRUE}
@@ -529,5 +540,3 @@ As our accuracy on the test set is similar to the accuracy on the training set a
 
 Summary:  
 Age, Passenger class and number of siblings are important metrics for the survival in titanic. Females, young people, people in higher class(proxy for rich people) and siblings had a higher chance of survival.    
-  
-Created by Harsha Achyuthuni. For more such links, visit [www.harshaash.website](http://www.harshaash.website/log-of-posts/)
