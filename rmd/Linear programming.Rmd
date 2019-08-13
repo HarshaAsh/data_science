@@ -1,0 +1,102 @@
+---
+title: "Linear progrramming and sensitivity analysis"
+author: "Harsha Achyuthuni"
+date: "13/08/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Simple minimisation problem
+
+This Problem is taken from (An Introduction to Management Science : Quantitative Approach to Decision Making)[https://www.cengage.co.in/category/higher-education/business-economics/operation-decision-sciences/management-science/an-introduction-to-management-science-quantitative-approach-to-decision-making-wcd-96] book. It is the example problem at page 52, chapter 2,5.  
+
+In this blog I will try to understand how to solve simple linear programming problems using R.  
+
+M&D Chemicals produces two products that are sold as raw materials to companies manufacturing bath soaps and laundry detergents. Based on an analysis of current inventory levels and potential demand for the coming month, M&D’s management specified that the
+combined production for products A and B must total at least 350 gallons. Separately, a major customer’s order for 125 gallons of product A must also be satisfied. Product A requires 2 hours of processing time per gallon and product B requires 1 hour of processing
+time per gallon. For the coming month, 600 hours of processing time are available. M&D’s objective is to satisfy these requirements at a minimum total production cost. Production costs are $2 per gallon for product A and $3 per gallon for product B.  
+
+The decision variables and objective function for the problem is as follows:  
+A = number of gallons of product A  
+B = number of gallons of product B  
+
+With production costs at \$2 per gallon for product A and \$3 per gallon for product B, the objective function that corresponds to the minimization of the total production cost can be written as  
+$$ Min( 2A + 3B) $$
+The different constraints for the problem will be as follows:
+1. To satisfy the major customer’s demand for 125 gallons of product A, we know A must be at least 125.  
+$$ A \geq 125 $$
+2. The combined production for both products must total at least 350 gallons  
+$$ A + B \geq 350 $$
+3.  The available processing time must not exceed 600 hours  
+$$ 2A+B \leq 600 $$
+4. Non negitivity constraints  
+$$ A \geq 0,  B \geq 0 $$
+
+Combining all the constraints, the lp can be written as:  
+$$Min 2A + 3B  $$
+Subject to constraints:  
+
+A | B |        | RHS  
+--|---|--------|----
+1 | 0 | $\geq$ | 125   
+1 | 1 | $\geq$ | 350     
+2 | 1 | $\leq$ | 600  
+
+In matrix form I can write it as:  
+$$ Ax = B $$
+where
+$$A = \begin{pmatrix} 1 & 0 & \\  1 & 1 & \\  2 & 1 &  \end{pmatrix}$$
+$$ x = \begin{pmatrix} x_A \\ x_B  \end{pmatrix}$$
+and 
+$$ B = \begin{pmatrix}  125 \\ 350 \\ 600 \end{pmatrix}$$
+
+```{r libraries}
+library(lpSolve)
+A <- matrix(c(1,0,
+              1,1,
+              2,1), nrow = 3, byrow = TRUE)
+B <- c(125, 350, 600)
+constranints_direction  <- c(">=", ">=", "<=")
+objective.fxn <- c(2,3)
+
+# Find the optimal solution
+optimum <-  lp(direction="min",
+               objective.in = objective.fxn,
+               const.mat = A,
+               const.dir = constranints_direction,
+               const.rhs = B,
+               all.int = T)
+optimum$solution
+optimum$objval
+```
+
+```{r graphical}
+lpData <- data.frame(A = (0:30)*25, B = (0:30)*25)
+lpData <- lpData %>% mutate(c1 = 125, c2 = 350 - A, c3 = (600-2*A))
+ggplot(lpData, aes(x=A, y=B)) + 
+  geom_line(aes(x = c1)) +
+  geom_line(aes(y = c2)) +
+  geom_line(aes(y = c3)) +
+  geom_ribbon(data=subset(lpData, 125 <= A & A <= 250),
+              aes(ymin=c2,ymax=c3), fill="blue", alpha="0.5") +
+  scale_y_continuous(expand = c(0, 0), limits=c(0,650)) +
+  scale_x_continuous(expand = c(0, 0), limits=c(0,400))
+```
+
+```{r graphical-minimising}
+lpData <- data.frame(A = (0:30)*25, B = (0:30)*25)
+lpData <- lpData %>% mutate(c1 = 125, c2 = 350 - A, c3 = (600-2*A))
+ggplot(lpData, aes(x=A, y=B)) + 
+  geom_line(aes(x = c1)) +
+  geom_line(aes(y = c2)) +
+  geom_line(aes(y = c3)) +
+  geom_ribbon(data=subset(lpData, 125 <= A & A <= 250),
+              aes(ymin=c2,ymax=c3), fill="blue", alpha="0.5") +
+  scale_y_continuous(expand = c(0, 0), limits=c(0,650)) +
+  scale_x_continuous(expand = c(0, 0), limits=c(0,400))
+```
+
