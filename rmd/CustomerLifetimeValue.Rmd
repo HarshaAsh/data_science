@@ -14,57 +14,60 @@ knitr::opts_chunk$set(
 library(tidyverse)
 library(readxl)
 library(lubridate)
-raw_data <- read_excel('C:\\Users\\achyuthuni.harsha\\Downloads/Online Retail.xlsx')
+library(kableExtra)
+raw_data <- read_excel('F:/System//Online Retail.xlsx')
 ```
 
-In this blog I want to introduce markov chains and find out the customer life time value. Customer Lifetime Value is the net present value (NPV) of the future margin generated from a customer or a customer segment. 
+In this blog, I want to introduce Markov chains and find out the customer lifetime value. Customer Lifetime Value is the net present value (NPV) of the future margin generated from a customer or a customer segment. 
   
 ## Concept
 
-*Markov Chians*  
+**Markov Chains**  
 In probability theory and statistics, a sequence or other collection of random variables is independent and identically distributed (i.i.d. or iid or IID) if each random variable has the same probability distribution as the others and all are mutually independent.  
 We have a set of states, S = {s1, s2,...,sr}. The process starts in one of these states and moves successively from one state to
 another. Each move is called a step. If the chain is currently in state $s_i$, then it moves to state $s_j$ at the next step with a probability denoted by $p_{ij}$ , and this probability does not depend upon which states the chain was in before the current state.
 
-That is the probability to be present in state j at time **t+1** is only dependent on the state at time **t**.
+That is the probability to be present in state j at time *t+1* is only dependent on the state at time *t*.
 $$ P_{ij} = P(X_{t+1} = j | X_{t} = i) $$
 
-*Customer Lifetime Value*
+**Customer Lifetime Value**  
 Customer lifetime value is important because, the higher the number, the greater the profits. You'll always have to spend money to acquire new customers and to retain existing ones, but the former costs five times as much. When you know your customer lifetime value, you can improve it.
 
-The customer segments can be represented as states of the Markov chain. Let {0, 1, 2, â¦, m} be the states of a Markov chain in which states {1, 2,..., m} denote different customer segments and state 0 denotes non-customer state.  
+The customer segments can be represented as states of the Markov chain. Let {0, 1, 2, …, m} be the states of a Markov chain in which states {1, 2,..., m} denote different customer segments and state 0 denotes non-customer state.  
 
 The steady-state retention probability is given by
-$$ R_t = 1 - \frac{\pi_0(1-P_0)}{1-\pi_0}$$
-Where $P_{00}$ is the transition probability of State 0, and $\pi_0$ is the steady state distribution for State 0.  
+$$ R_t = 1 - \frac{\pi_0(1-P_{00})}{1-\pi_0}$$
+Where $P_{00}$ is the transition probability of State 0, and $\pi_0$ is the steady-state distribution for State 0.  
 
-Similarly Customer lifetime value for N periods is given by:
-$$ CLT = \sum_{t=0}^{N} \frac{P_IÃP^tÃR}{(1+i)^t} $$
+Similarly, Customer lifetime value for N periods is given by:
+$$ CLV = \sum_{t=0}^{N} \frac{P_I×P^t×R}{(1+i)^t} $$
 where PI is the initial distribution of customers in different states, P is the transition probability matrix, R is the reward vector (margin generated in each customer segment). The interest rate is i (discount rate), $d = 1 + \frac{1}{1+i}$ is the discount factor.  
 
 ## Data
 
-The data is obtained from [UCI machine learning repository](http://archive.ics.uci.edu/ml/datasets/online+retail). It is a Online Retail Data Set which contains all the transactions occurring between 01/12/2010 and 09/12/2011 for a UK-based and registered non-store online retail. The company mainly sells unique all-occasion gifts. Many customers of the company are wholesalers.  
+The data is obtained from the [UCI machine learning repository](http://archive.ics.uci.edu/ml/datasets/online+retail). It is an Online Retail Data Set which contains all the transactions occurring between 01/12/2010 and 09/12/2011 for a UK-based and registered non-store online retail. The company mainly sells unique all-occasion gifts. Many customers of the company are wholesalers.  
 
 A sample data is shown below
-```{r data-sample, echo=FALSE, message=FALSE, warning=FALSE}
-raw_data %>% sample_n(5)
+```{r data-sample, echo=FALSE, message=FALSE, warning=FALSE, paged.print=TRUE}
+kable(raw_data %>% sample_n(5), align = 'c', caption = 'raw_data') %>% 
+   kable_styling(full_width = F)
 summary(raw_data)
 ```
 
 As I want to calculate CLV, I want to filter for customers that have done a transaction in Dec 2010 (only they will have enough representation in all states).  
 
-Filter for customers that have done transaction in Dec 2010
-```{r, echo=TRUE}
+Filter for customers that have done a transaction in Dec 2010
+```{r filter, echo=TRUE, message=FALSE, warning=FALSE}
 cust_name <- (raw_data %>% 
                 filter(month(InvoiceDate) == 12, year(InvoiceDate) == 2010, !is.na(CustomerID) ) %>% 
   dplyr::select(CustomerID) %>% 
   unique())$CustomerID
 filtered_data <- raw_data %>% filter(CustomerID %in% cust_name) %>% group_by(InvoiceDate, CustomerID, Country) %>% 
   summarise(no_trans = n(), total_sales = sum(UnitPrice), mean_sales = mean(UnitPrice), total_quantity = sum(Quantity))
+cat('The total number of customers are',length(cust_name))
 ```
 
-For random 10 customers, the total sales and number of items sold across time is shown in a bubble plot as shown.  
+For random 10 customers, the total sales and number of items sold across time are shown in a bubble plot.  
 ```{r bubble-plot, echo=FALSE, message=FALSE, warning=FALSE}
 sample_cust <- sample(cust_name, 10)
 ggplot(filtered_data %>% 
@@ -73,24 +76,27 @@ ggplot(filtered_data %>%
   aes(y=CustomerID, x=InvoiceDate, size = total_sales, color = total_quantity)) +
   geom_point(alpha=0.5) +
   geom_hline(yintercept = sample_cust, size = 0.0001)+
-  scale_size(range = c(.1, 24), name="Total Sales")
+  scale_size(range = c(.1, 24), name="Total Sales") +
+  theme_minimal() + theme(legend.position="none")
 ```
 
-You can observe that there are gaps between purchases for different customers. Gap is the difference in months between two successive purchases or the difference between the current month (despite no purchase) and the last purchase month. The frequency distribution of all the purchases at different gaps is shown below:  
+You can observe that there are gaps between purchases for different customers. 'Gap' is the difference in months between two successive purchases or the difference between the current month (despite no purchase) and the last purchase month. The frequency distribution of all the purchases at different gaps is shown below:  
 
-```{r, echo=TRUE}
+```{r filtered_data_cum, echo=FALSE}
+kable(
 filtered_data %>% filter(InvoiceDate < date(paste0('2011-12-09'))) %>% 
     mutate(recent_purchase_date = date(paste0('2011-12-09'))-date(InvoiceDate)) %>% 
     group_by(CustomerID) %>% 
     summarise(recent_purchase_date = min(recent_purchase_date)) %>% 
     mutate(gap_month = as.integer(floor(recent_purchase_date/30))) %>% 
   group_by(gap_month) %>% 
-  summarise(Count = n()) %>% mutate(cumsum = cumsum(Count)*100/948)
+  summarise(Count = n()) %>% mutate(cumsum = cumsum(Count)*100/948), align = 'c', caption = 'Cumulative frequency') %>% 
+   kable_styling(full_width = F)
 ```
 
-From the above distribution, I am assuming that a customer who has not transacted for greater than 6 months is an inactive customer.  
+From the above distribution, I am assuming that a customer who has not transacted for greater than 6 months is inactive.  
 
-## Creating a markov chain
+## Creating a Markov chain
 
 Loading the libraries required in this section
 ```{r library, message=FALSE, warning=FALSE, include=FALSE}
@@ -99,9 +105,9 @@ library(diagram) #Functions for visualising simple graphs
 library(markovchain)
 ```
 
-At 2011-06-01, the state of each customer is given by:
+At 2011-06-01, the state of a customer is given by:
 
-```{r, echo=TRUE}
+```{r create-classes, echo=TRUE, message=FALSE, warning=FALSE, paged.print=TRUE}
 elapsed_months <- function(end_date, start_date) {
     ed <- as.POSIXlt(end_date)
     sd <- as.POSIXlt(start_date)
@@ -112,12 +118,13 @@ final_classes <- filtered_data %>% filter(InvoiceDate < date('2011-07-01')) %>%
   summarise(recent_purchase_date = max(InvoiceDate)) %>% 
   mutate(Class1 = elapsed_months(date('2011-07-01'), date(recent_purchase_date))) %>% 
   mutate(Class1 = as.integer(Class1))
-final_classes %>% sample_n(10)
+kable(final_classes %>% sample_n(10), align = 'c', caption = 'Initial state') %>% 
+   kable_styling(full_width = F)
 ```
 
 Here the states are defined as:  
   
-State | Recency Level | Explaination               
+State | Recency Level | Explanation               
 ------|---------------|----------------------------
   1   |        1      | Last purchase made this month   
   2   |        2      | Last purchase made last month   
@@ -129,7 +136,7 @@ State | Recency Level | Explaination
 
 Similarly the state of the customer at the start of each month is:  
 
-```{r}
+```{r iter-classes, echo=FALSE, message=FALSE, warning=FALSE, paged.print=TRUE}
 for(i in 8:12){
   final_classes_n <- filtered_data %>% filter(InvoiceDate < date(paste0('2011-',i,'-01'))) %>%
     group_by(CustomerID) %>%
@@ -141,36 +148,29 @@ for(i in 8:12){
   names(final_classes_n)[2] <- paste0('Class', i-6)
   final_classes <- merge(x = final_classes, y = final_classes_n, by = 'CustomerID')
 }
-final_classes %>% sample_n(10)
+kable(final_classes %>% sample_n(10), align = 'c', caption = 'States after every month') %>% 
+   kable_styling(full_width = F)
 ```
 
 I can observe that every customer moves from one class (state) to another state every month (step). According to Markov, the probability of a customer to move to state **j** at any step is only given by the previous state **i**.
 $$ P_{ij} = P(X_{t+1} = j | X_{t} = i) $$
 For each interaction (Class1 to Class 2, month 2 to month 3, Step 3 to step 4), a transaction matrix can be created which has the probability of moving from **i** the state to **j** state.
 
-But before we can create the one-step transition probabilities, we need to check whether the sequence of random variables form a Markov chain. This is carried out using Andersonâ Goodman test which is a chi-square test of independence.   
+But before I can create the one-step transition probabilities, I need to check whether the sequence of random variables can be approximated to a Markov chain. This is carried out using Anderson− Goodman test which is a chi-square test of independence.   
 The null and alternative hypotheses to check whether the sequence of random variables follows a Markov chain is stated below:   
-H0: The sequences of transitions (X1, X2, â¦, Xn) are independent (zero-order Markov chain)   
-HA: The sequences of transitions (X1, X2, â¦, Xn) are dependent (first-order Markov chain)  
+H0: The sequences of transitions (X1, X2, …, Xn) are independent (zero-order Markov chain)   
+HA: The sequences of transitions (X1, X2, …, Xn) are dependent (first-order Markov chain)  
 The corresponding test statistic is $$ \chi^2 = \sum_{i} \sum_{j} (\frac{(O_{ij} -E_{ij})^2}{E_{jj}}) $$
 
-For the transition from state 1 to state 2, the test statistic is:  
-
-```{r echo=TRUE, message=FALSE, warning=FALSE}
-verifyHomogeneity(inputList = c(final_classes[3:4]))
-```
-
-As the p_value is 0.8, rejecting the Null Hypothesis. The data can be assumed as a first order markov chain.  
-
 The transition probability matrix for the transition form State 1 to 2 is:
-```{r}
-seq_matr <- markovchainFit(final_classes[3:4], method = "mle")
+```{r MKfit, echo=TRUE, message=FALSE, warning=FALSE, paged.print=TRUE}
+seq_matr <- markovchainFit(final_classes[3:4], method = "mle", name = 'CLV')
 seq_matr$estimate
 ```
-From the above matrix, P(4,5) = 0.8684211 means that the probability of moving from State 4 to State 5 is 84%. That means that a customer that has not purchased any item in 3 months has a 84% probability of not purchasing any item the next month also.  
+From the above matrix, P(4,5) = 0.8684211 means that the probability of moving from State 4 to State 5 is 86%. That means that a customer who has not purchased any item in 3 months has a 86% probability of not purchasing any item the next month also.  
 
 Similarly the Transition matrix for all the steps is:
-```{r sequence-TP, echo=TRUE, message=FALSE, warning=FALSE}
+```{r sequence-TP, echo=TRUE, message=FALSE, warning=FALSE, paged.print=TRUE}
 sequenceMatr = list()
 for(i in 1:5){
   sequenceMatr[[i]] <- markovchainFit(final_classes[(2+i):(3+i)], method = "map")$estimate@transitionMatrix
@@ -178,19 +178,19 @@ for(i in 1:5){
 sequenceMatr
 ```
 
-The Transition Probabilities at various steps seem to follow a similar pattern. We can do a likelihood ratio test to test the homogeneity of transition matrices. That means I want to find out if the changes in TP across time are random and I can take a constant TP to describe the different TP;s or not.  
-The Null and alternative hypothesis is:
-$H_0 : P_{ij} (t) = P_{ij}$
-$H_1 : P_{ij} (t) \neq P_{ij}$
+The Transition Probabilities at various steps seem to follow a pattern. I can do a likelihood ratio test to test the homogeneity of transition matrices. That means I want to find out if the changes in TP across time are random and I can take a constant TP to describe the different TP;s or not.   
+The Null and alternative hypothesis is:  
+$H_0 : P_{ij} (t) = P_{ij}$  
+$H_1 : P_{ij} (t) \neq P_{ij}$  
 
-The test statistic for a likelyhood ratio test (Chi-square test) is given by
+The test statistic for a likelihood ratio test (Chi-square test) is given by
 $$ \chi^2 = \sum_{t} \sum_{i} \sum_{j} \frac{n(t)[\hat P_{ij}(t)-\hat P_{ij}]^2}{\hat P_{ij}} $$
-where n(t) is the number of customers in state i at time t. The test statistic follows a $\chi^2$ distribution with (t â 1) Ã m Ã (m â 1) degrees of freedom.  
-```{r homogenity, echo=TRUE, message=FALSE, warning=FALSE}
+where n(t) is the number of customers in state i at time t. The test statistic follows a $\chi^2$ distribution with (t − 1) × m × (m − 1) degrees of freedom.   
+```{r homogenity, echo=TRUE, message=FALSE, warning=FALSE, paged.print=TRUE}
 verifyHomogeneity(sequenceMatr)
 ```
 
-As the p-value is greater than the $alpha = 0.05$, I am retaining the Null hypothesis that the transition probabilities are homogeneous.  
+As the p-value is greater than the $\alpha = 0.05$, I am retaining the Null hypothesis that the transition probabilities are homogeneous.  
 
 The final TP will be as follows:
 ```{r}
@@ -199,42 +199,42 @@ for(i in 2:5){
   finalTP <- finalTP+sequenceMatr[[i]]
 }
 finalTP <- finalTP/5
-finalTP
-```
-```{r}
 CLT.mc <- new('markovchain', 
                   # states = colnames(finalTP),
                   transitionMatrix = finalTP,
                   name = 'CLT')
-states(CLT.mc)
-CLT.mc@transitionMatrix
+CLT.mc
+```
+
+The Markov chain can be visualized as follows:  
+```{r plotmap, echo=TRUE, message=FALSE, warning=FALSE}
 plotmat(t(CLT.mc@transitionMatrix), box.size = 0.05)
 ```
 
-The initial frequency of the classes are:
-```{r}
+The initial frequency of the classes are:  
+```{r init-freq, echo=TRUE, message=FALSE, warning=FALSE, paged.print=TRUE}
 initial_freq <- (final_classes %>% group_by(Class1) %>% summarise(frequency = n()/nrow(final_classes)))$frequency
 initial_freq
 ```
 
-As TP is the transition probability between states, we can find the number of people in each state at any time **t** using the following formulae:
+As TP is the transition probability between states, I can find the number of people in each state at any time *t* using the following formula:
 
 $$u^{(n)} = uP^{(n)}$$
 
-From the TP, the frequency in the first stage is compared with the actual frequency at the 1nd stage. 
-```{r}
+From the TP, the frequency in the first stage is compared with the actual frequency at the 1st stage. 
+```{r first-stage, echo=FALSE, message=FALSE, warning=FALSE, paged.print=TRUE}
 final_classes %>% group_by(Class2) %>% summarise(actual_frequency = n()/nrow(final_classes)) %>% 
-  mutate(predicted_frequency = initial_freq*CLT.mc)
+  mutate(predicted_frequency = initial_freq*CLT.mc[1,])
 ```
 
 Similarly for 3rd stage
-```{r}
+```{r 3rd stage, echo=FALSE, message=FALSE, warning=FALSE, paged.print=TRUE}
 final_classes %>% group_by(Class4) %>% summarise(actual_frequency = n()/nrow(final_classes)) %>% 
-  mutate(predicted_frequency = initial_freq*CLT.mc^3)
+  mutate(predicted_frequency = (initial_freq*CLT.mc^3)[1,])
 ```
 
-I can observe that a markov chain can be used to find the number of people in each state after each stage.  So the probability of people in each class after n steps is given below:
-```{r}
+I can observe that a Markov chain can be used to find the number of people in each state after each stage.  So the probability of people in each class after n steps is given below:
+```{r iter-steady-state, echo=FALSE, message=FALSE, warning=FALSE, paged.print=TRUE}
 set.seed(1)
 rand_num <- sort(sample(1:100, 10))
 for(i in rand_num){
@@ -244,67 +244,81 @@ for(i in rand_num){
 ```
 
 I can observe that as 'n' is increasing, the frequency of customers is tending towards constant. This constant is called steady state frequency. The steady state probability is :
-```{r}
+```{r steady-state, echo=TRUE, message=FALSE, warning=FALSE}
 steady.state.prob <- steadyStates(CLT.mc)
 steady.state.prob
 ```
 
+The probability change with steps can be visualized as below:
+```{r plotting-steady-state, echo=FALSE, message=FALSE, warning=FALSE}
+step_wise_prob <- data.frame(step = c(), prob1 = c(), prob2 = c(), prob3 = c(), 
+                             prob4 = c(), prob5 = c(), prob6 = c(), prob7 = c())
+for(k in 1:25){
+  nsteps <- initial_freq*CLT.mc^k
+  nDataFr <- data.frame(step = k, prob1= nsteps[1,1], prob2 = nsteps[1,2], prob3 = nsteps[1,3],  
+             prob4 = nsteps[1,4],  prob5 = nsteps[1,5], prob6 = nsteps[1,6], prob7 = nsteps[1,7])
+  step_wise_prob <- rbind(step_wise_prob, nDataFr)
+}
+
+ggplot(step_wise_prob, aes(x = step))+
+  geom_line(aes(y=prob1, color = 'State 1')) +
+  geom_line(aes(y=prob2, color = 'State 2')) +
+  geom_line(aes(y=prob3, color = 'State 3')) +
+  geom_line(aes(y=prob4, color = 'State 4')) +
+  geom_line(aes(y=prob5, color = 'State 5')) +
+  geom_line(aes(y=prob6, color = 'State 6')) +
+  geom_line(aes(y=prob7, color = 'State 7')) +
+  xlab('Chain Step') +
+  ylab('Probability') +
+  labs(color = "States")+
+  ggtitle('25 Step Chain Probability Prediction')+
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
 ## Customer Lifetime value
 
-Now that we have established that the customer segments can be represented as a marcov chain, we can compute the customer lifetime value.  
+Now that I established that the customer segments can be represented as a Marcov chain, I can compute the customer lifetime value.  
 The monetary value at each state is 
 
-```{r revenue_in_state, echo=TRUE, message=FALSE, warning=FALSE}
+```{r revenue_in_state, echo=TRUE, message=FALSE, warning=FALSE, paged.print=TRUE}
 revenue_in_states <- filtered_data %>% left_join(final_classes, by = 'CustomerID') %>%
   filter(InvoiceDate < date('2011-07-01')) %>%
   dplyr::select(Class1, total_sales) %>%
   group_by(Class1) %>%
-  summarise(future_avg_revenue = mean(total_sales))
-revenue_in_states
+  summarise(avg_revenue = mean(total_sales))
+kable(revenue_in_states, align = 'c', caption = 'States after steps') %>% 
+   kable_styling(full_width = F)
 ```
 
+The steady-state retention probability is given by
+$$ R_t = 1 - \frac{\pi_0(1-P_0)}{1-\pi_0}$$
+Where $P_{00}$ is the transition probability of the null state (State 7), and $\pi_0$ is the steady state distribution of the Null state (State 7). Substituting I get:  
+```{r retention prob, echo=FALSE, message=FALSE, warning=FALSE, paged.print=TRUE}
+1 - steady.state.prob[7]*(1-CLT.mc@transitionMatrix[7,7])/(1-steady.state.prob[7])
+```
 
-<!-- ```{r, echo=TRUE} -->
-<!-- summary(seq_matr$estimate) -->
-<!-- plot(seq_matr$estimate, package = 'diagram' ) -->
-<!-- ``` -->
+Similarly Customer lifetime value for 5 periods is given by:
+$$ CLV = \sum_{t=0}^{5} \frac{P_I×P^t×R}{(1+i)^t} $$
+where PI is the initial distribution of customers in different states, P is the transition probability matrix, R is the reward vector (margin generated in each customer segment). The interest rate is i (discount rate), $d = 1 + \frac{1}{1+i}=0.95$ is the discount factor.  
+Substituting, I get:
+```{r CLT, echo=TRUE, message=FALSE, warning=FALSE, paged.print=TRUE}
+CLT <- 0
+for(k in 0:5){
+  CLT = CLT + (0.95^k)*(initial_freq %*% (CLT.mc@transitionMatrix^k) %*% revenue_in_states$avg_revenue)
+}
+CLT
+```
+Therefore the customer lifetime value is 484.34.
 
-<!-- ```{r, echo=TRUE} -->
-<!-- sequenceMatr = list() -->
-
-
-
-
-
-<!-- ```{r, echo=TRUE} -->
-<!-- for(i in 1:10)  { -->
-<!--     print(paste('i = ', i, sep = '')) -->
-<!--     print(seq_matr$estimate@transitionMatrix %^% i) -->
-
-
-<!-- } -->
-<!-- ``` -->
-<!-- Expected future monetary value in each state -->
-<!-- ```{r, echo=TRUE} -->
-<!-- steadyStates(seq_matr$estimate) -->
-<!-- ``` -->
-
-
-
-<!-- ```{r echo=TRUE, warning=FALSE} -->
-<!-- revenue_in_states <- filtered_data %>% left_join(final_classes, by = 'CustomerID') %>%  -->
-<!--   filter(InvoiceDate >= date('2011-06-01')) %>%  -->
-<!--   dplyr::select(Class1, total_sales) %>%  -->
-<!--   group_by(Class1) %>%  -->
-<!--   summarise(future_avg_revenue = mean(total_sales)) -->
-<!-- revenue_in_states -->
-<!-- ``` -->
-
-
-
-
-
-
-
-
-<!-- Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot. -->
+___________________________________________________
+Created by Achyuthuni Sri Harsha  
+References:  
+1. Business Analytics: The Science of Data-Driven Decision Making [Available](https://www.wileyindia.com/business-analytics-the-science-of-data-driven-decision-making.html)  
+2. Introduction to probability, Charles M. Grinstead and J. Laurie Snell, [Available](http://www.dartmouth.edu/~chance/teaching_aids/books_articles/probability_book/book.html)  
+3. CS294 Markov Chain Monte Carlo: Foundations & Applications (lecture by Prof. Alistair Sinclair in Fall 2009)   [Available](https://people.eecs.berkeley.edu/~sinclair/cs294/n2.pdf)  
+4. Computer Science Theory for the Information Age, Spring 2012 (course material) [Available](https://www.cs.cmu.edu/~venkatg/teaching/CStheory-infoage/)  
+6. Customer Analytics at Flipkart.com [Available](https://hbsp.harvard.edu/product/IMB555-PDF-ENG)  
+5. IIMB BAI Class notes and practice problems  
