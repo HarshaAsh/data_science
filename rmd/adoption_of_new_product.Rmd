@@ -1,0 +1,189 @@
+---
+title: "Forecasting adoption of a new product"
+author: "Harsha Achyuthuni"
+date: "19/10/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(tidyverse)
+library(kableExtra)
+```
+
+This post was initially posted at [www.harshaash.website](https://www.harshaash.website/adoption-of-new-product/)  
+
+## Introduction
+
+Forecasting new adoptions after a product introduction is an important marketing problem. I want to use a forecasting model developed by Frank Bass that has proven to be effective in forecasting the adoption of innovative and new technologies. I am going to use Nonlinear programming to estimate the parameters of the Bass forecasting model.   
+
+### Bass Forecasting model
+
+The model has three parameters that must be estimated.  
+
+parameter | explanation
+----------|--------------
+m | the number of people estimated to eventually adopt the new product  
+q | the coefficient of imitation
+p | the coefficient of innovation
+
+The coefficient of imitation (q) is a parameter that measures the likelihood of adoption due to a potential adopter being influenced by someone who has already adopted the product. It measures the “word-of-mouth” effect influencing purchases.    
+The coefficient of innovation (p) measures the likelihood of adoption, assuming no influence from someone who has already purchased (adopted) the product. It is the likelihood of someone adopting the product due to her or his own interest in the innovation.  
+
+if $C_{t-1}$ is the number of people that adopted the product by time t-1, then the number of new adopters during time t is given by Bass forecasting model and it is:  
+$$ F_t = (p + q[\frac{C_{t-1}}{m}])(m-C_{t-1}) $$
+
+### Data
+
+The data of iPhone sales is taken from  [Statista](https://www.statista.com/statistics/263401/global-apple-iphone-sales-since-3rd-quarter-2007/). A sample of the data is shown below.  
+
+```{r echo=FALSE}
+iphone <- read_xlsx("C:\\Users\\Achyuthuni\\Desktop\\data_science\\data/iphone sales.xlsx", sheet = 'Data')
+kable(iphone %>% sample_n(5), caption = 'iPhone sales (Millions $)') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+```
+
+The sales of iPhone in different quarters can be plotted as follows:  
+
+```{r echo=FALSE}
+iphone$cumulative <- 0
+iphone$cumulative[2:46] <- cumsum(iphone$Sales[1:45])
+ggplot(data = iphone %>% mutate(row_no = as.numeric(rownames(iphone))), 
+       aes(x = row_no, y = Sales)) + 
+  geom_bar(stat = 'identity') +
+  labs(x = 'Quarters (Q3 2007 to Q3 2018)', y='Unit sales in millions') +
+  ggtitle('Apple iPhone sales') +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_blank()
+  )
+```
+
+Strictly speaking, iPhone sales for time period t are not the same as the number of adopters during time period t. But the number of repeat customers is usually small and iPhone sales is proportional to the number of customers. The Bass forecasting model seems appropriate here.  
+
+This forecasting model, can be incorporated into a nonlinear optimization problem to find the values of p, q, and m that give the best forecasts for this set of data.  
+Assume that N periods of data are available. Let $S_t$ denote the actual number of adopters in period t for t = 1, . . . , N.  
+
+Then the forecast in each period and the corresponding forecast error $E_t$ is defined by
+$$ F_t = (p + q[\frac{C_{t-1}}{m}])(m-C_{t-1}) = pm + (q-p)C_{t-1} - q\frac{C_{t-1}^2}{m} $$
+this can be written as
+$$\begin{eqnarray}
+F(t) &=& \beta_0 + \beta_1 \; C_{t-1} + \beta_2 \; C_{t-1}^2  \quad (BASS) \\
+\beta_0 &=& pm \\
+\beta_1 &=& q-p \\
+\beta_2 &=& -q/m
+\end{eqnarray}$$
+
+Where 
+$$ E_t = F_t - S_t$$
+Minimizing the sum of squares of errors gives me the p, q and m values. Minimizing using gradient descent, I get:  
+
+```{r gradient descent, echo=TRUE}
+gradientDesc <- function(x1, x2, y, learn_rate, conv_threshold, n, max_iter) {
+  m1 <- 0.09
+  m2 <- -2*10^-5
+  c <- 3.6
+  yhat <- m1 * x1 + m2 * x2 + c
+  MSE <- sum((y - yhat) ^ 2) / n
+  converged = F
+  iterations = 0
+  plot(iterations, MSE, xlim = c(0, 10), ylim = c(MSE/4, MSE)) #Change this as needed
+  while(converged == F) {
+    ## Implement the gradient descent algorithm
+    m1_new <- m1 - learn_rate * ((1 / n) * (sum((yhat - y) * x1)))
+    m2_new <- m2 - learn_rate * ((1 / n) * (sum((yhat - y) * x2)))
+    c_new <- c - learn_rate * ((1 / n) * (sum(yhat - y)))
+    MSE <- sum((y - yhat) ^ 2) / n
+    m1 <- m1_new
+    m2 <- m2_new
+    c <- c_new
+    yhat <- m1 * x1 + m2 * x2 + c
+    MSE_new <- sum((y - yhat) ^ 2) / n
+    if(MSE - MSE_new <= conv_threshold) {
+      converged = T
+      cat("Type1: Optimal intercept:", c, "Optimal slopes:", m1, m2)
+      return(c(c, m1, m2))
+    }
+    iterations = iterations + 1
+    cat('iter', iterations, 'm1 = ', m1, 'm2 = ', m2, 'c = ', c, 'MSE = ', MSE_new, '\n')
+    points(iterations, MSE_new)
+    lines(x = c(iterations-1, iterations), y = c(MSE, MSE_new))
+    if(iterations > max_iter) { 
+      abline(c, m1) 
+      converged = T
+      return(paste("Type2: Optimal intercept:", c, "Optimal slopes:", m1, m2))
+    }
+  }
+}
+optim_param <- gradientDesc(iphone$cumulative, iphone$cumulative^2,iphone$Sales, 10^-12, 0.001, 46, 2500)
+```
+
+From the above slope values, I can get the p, q and m values:
+```{r optimise, echo=FALSE}
+m <- max((-optim_param[2]+sqrt(optim_param[2]^2-4*optim_param[1]*optim_param[3]))/(2*optim_param[3]),
+         (-optim_param[2]-sqrt(optim_param[2]^2-4*optim_param[1]*optim_param[3]))/(2*optim_param[3]))
+p = optim_param[1]/m
+q = -m*optim_param[3]
+cat('The optimum for m, p and q are ', m, p, q)
+```
+
+The objective function is plotted as below.  
+```{r plotly, echo=FALSE, message=FALSE, warning=FALSE}
+library(plotly)
+m_range <- 2346 + (100:150)*0.001
+p_range <- (200:140)*0.00001
+q_range <- (110:85)*0.001
+plot_dataset <- data.frame(m = c(), p = c(), q = c(), t = c(), Et = c())
+for(m in m_range){
+  for(p in p_range){
+    for(q in q_range){
+      Ft <- (p + (q/m)*iphone$cumulative)*(m - iphone$cumulative)
+      Et <- mean((iphone$Sales-Ft)^2)
+      plot_dataset <- rbind(plot_dataset, data.frame(m = m, p = p, q = q, Et = Et))
+    }
+  }
+}
+# plot_dataset <- plot_dataset %>% filter(m = 2346)
+plot_ly(y = plot_dataset$p, x = plot_dataset$q, z = plot_dataset$Et, type = 'mesh3d', intensity = plot_dataset$Et)
+```
+
+### Sales Peak
+It is easy to calculate the time at which adoptions will peak out. The peak sales is given by $t^* = \frac{-1}{p+q}\; \ln(p/q)$  
+```{r echo=FALSE}
+tstar = -1/(p+q)*log(p/q)
+print(tstar)
+```
+
+### Sales Forecast
+We cal also try to forecast the sales in the future 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#PLOT THE FITTED MODEL
+nqtrs = 100
+t=seq(0,nqtrs)
+FF = expression(p*(exp((p+q)*t)-1)/(p*exp((p+q)*t)+q))
+ff = D(FF,"t")
+fn_f = eval(ff)*m
+
+plot(t,fn_f,type="l",ylab="Qtrly Units (MM)",main="Apple Inc Sales")
+n = length(iphone$Sales)
+lines(1:n,iphone$Sales,col="red",lwd=2,lty=2)
+```
+
+## Wrap up
+
+There are two ways in which the Bass forecasting model can be used:    
+1. Assume that sales of the new product will behave in a way that is similar to a previous product for which p and q have been calculated and to subjectively estimate m, the potent forecast for period 7 is made. This method is often called a rolling-horizon approach.  
+2. Wait until several periods of data for the new product are available. For example, if five periods of data are available, the sales data for these five periods could be used to forecast demand for period 6. Then, after six periods of sales are observed,
+
+### References:  
+1. Data Science: Theories, Models, Algorithms, and Analytics - Sanjiv Ranjan Das [online](https://srdas.github.io/MLBook/)  
+2. A New Product Growth for Model Consumer Durables - Bass [Management Science, January 1969](https://www.jstor.org/stable/2628128?origin=JSTOR-pdf&seq=1#page_scan_tab_contents)  
+3. An Introduction to Management Science : Quantitative Approach to Decision Making - Anderson and Sweeney [Cengage](https://www.cengage.co.in/category/higher-education/business-economics/operation-decision-sciences/management-science/an-introduction-to-management-science-quantitative-approach-to-decision-making-wcd-96)  
+4. Linear regression using gradient descent [online](http://ethen8181.github.io/machine-learning/linear_regression/linear_regession.html)  
+5. Prof Gila E. Fruchter notes [online](https://faculty.biu.ac.il/~fruchtg/829/lec/6.pdf)  
+6. Apple iPhone sales - statistica [online](https://www.statista.com/statistics/263401/global-apple-iphone-sales-since-3rd-quarter-2007/)  
+7. Gradient descent - towardsdatascience [online](https://towardsdatascience.com/machine-learning-bit-by-bit-multivariate-gradient-descent-e198fdd0df85) 
+8. Implementation in R - r-bloggers [online](https://www.r-bloggers.com/implementing-the-gradient-descent-algorithm-in-r/)  
+
