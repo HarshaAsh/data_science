@@ -1,0 +1,325 @@
+---
+title: "Stationarity"
+author: "Harsha Achyuthuni"
+date: "16/12/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(kableExtra)
+library(gridExtra)
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Time Series
+
+A time series is a series of data points captured in time order. Most commonly, a time series is a sequence taken at successive equally spaced points in time. This post is the first in a series of blogs on time series methods and forecasting.  
+
+In this blog, we will discuss about stationarity, random walk, deterministic drift and other vocabulary which form as foundation to time series:  
+
+## Stochastic processes
+A random or stochastic process is a collection of random variables ordered in time. It is denoted as $Y_t$. For example, in-time of an employee is a stochastic process. How is in-time a stochastic process? Consider the in-time on a particular day is 9:00 AM. In theory, the in-time could be any particular value which depends on many factors like traffic, work load, weather etc. The figure 9:00 AM is a particular **realization** of many such possibilities. Therefore we can say that in-time is a stochastic process where as the actual values observed are a particular realization (sample) of the process.  
+
+## Stationary Processes
+A stochastic process is said to be stationary if the following conditions are met:  
+1. Mean is constant over time  
+2. Variance is constant over time  
+3. Value of the co-variance between two time periods depends only on the distance or gap or lag between the two time periods and not the actual time at which the co variance is computed  
+
+This type of process is also called weakly stationary, or co variance stationary, or second-order stationary or wide sense stationary process.  
+
+Written mathematically, the conditions are:
+$$ Mean: E(Y_t) = \mu $$
+$$ Variance: var(Y_t) = E(Y_t-\mu)^2 = \sigma^2 $$
+$$ Covariance: \gamma_k = E[(Y_y - \mu)(Y_{t+k} - \mu)] $$
+
+### Purely random or white noise process
+A stochastic process is purely random if it has zero mean, constant variance, and is serially uncorrelated. An example of white noise is the error term in a linear regression which has zero mean, constant standard deviation and no auto-correlation.  
+
+### Simulation
+For simulating a stationary process, I am creating 100 realizations(samples) and comparing their mean, variance and co-variance. The data for 6 days and 5 realizations is shown:    
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+stationary.df <- data.frame(date = today() + days(0:30))
+for(i in 1:100){
+  stationary.df <- stationary.df %>% mutate_(.dots=setNames(list(quote(runif(n = 31))),paste0('realization_', i)))
+}
+kable(stationary.df[c(1,2,3, 10, 15, 30),c(1,2,3, 26, 51, 101)], caption = 'Samples of Stationary process') %>% 
+  kable_styling(full_width = T) %>%
+  scroll_box()
+```
+The mean, variance and co-variance between the samples (realizations) across are as follows:
+
+```{r message=FALSE, warning=FALSE}
+library(matrixStats)
+stationary.df$mean <- rowSums(stationary.df %>% select(-one_of('date')))
+stationary.df$variance <- rowVars(stationary.df %>% select(-one_of('date', 'mean')) %>% as.matrix())
+stationary.df$covariance <- NA
+covar.mat <- stationary.df %>% select(-one_of('date', 'mean', 'variance', 'covariance')) %>% as.matrix() %>% t() %>% cor()
+for (i in 1:30) {
+  stationary.df$covariance[i+1] <- covar.mat[i,i+1]
+}
+
+p1 <- ggplot(data = stationary.df, aes(x = date, y = mean)) +
+  geom_point() +
+  labs(y= "Mean", x='Date') + 
+  ggtitle('Mean') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+p2 <- ggplot(data = stationary.df, aes(x = date, y = variance)) +
+  geom_point() +
+  labs(y= "Variance", x='Date') + 
+  ggtitle('Variance') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+p3 <- ggplot(data = stationary.df, aes(x = date, y = covariance)) +
+  geom_point() +
+  labs(y= "Covariance (order 1)", x='Date') + 
+  ggtitle('Covariance') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+grid.arrange(p1, p2, p3, nrow=1, ncol = 3)
+rm(stationary.df)
+```
+
+For a stationary process, the mean, variance and co variance are constant.  
+
+## Non-stationary Processes
+If a time series is not stationary, it is called a non-stationary time series. In other words, a non-stationary time series will have a time-varying mean or a time-varying variance or both.  Random walk, random walk with drift etc are examples of non-stationary processes.  
+
+### Random walk
+Suppose $\epsilon_t$ is a white noise error term with mean 0 and variance $σ_2$. Then the series $Y_t$ is said to be a random walk if
+$$ Y_t = Y_{t−1} + \epsilon_t $$
+In the random walk model, the value of Y at time t is equal to its value at time (t − 1) plus a random shock.  
+For a random walk, 
+$$ Y_1 = Y_0 + \epsilon_1 $$
+$$ Y_2 = Y_1 + \epsilon_2 = Y_0 + \epsilon_1 + \epsilon_2 $$
+$$ Y_3 = Y_2 + \epsilon_3 = Y_0 + \epsilon_1 + \epsilon_2 + \epsilon_3 $$
+and so on.. In general we could write  
+$$ Y_t = Y_0 + \sum \epsilon_t $$
+As $$ E(Y_t) = E(Y_0 + \sum \epsilon_t) = Y_0 $$
+$$ var(Y_t) = t\times \sigma^2 $$  
+Although the mean is constant with time, the variance is proportional to time.  
+
+For simulating a random walk process, I am creating 100 realizations(samples) and comparing their mean, variance and co-variance. The data for 6 days of 5 realizations (samples) is shown:    
+```{r}
+random.walk.df <- data.frame(date = today() + days(0:30))
+for(i in 1:100){
+  random.walk.df <- random.walk.df %>% mutate_(.dots=setNames(list(quote(rep(4, 31))), paste0('realization_', i)))
+  for(j in 2:31){
+    random.walk.df[j, i+1] <- random.walk.df[j-1, i+1] + rnorm(n = 1)
+  }
+  # random.walk.df[paste0('realisation_', i)] <- lag((random.walk.df %>% select(paste0('realisation_', i)))[[1]])+4
+}
+kable(random.walk.df[c(1,2,3, 10, 15, 30),c(1,2,3, 26, 51, 101)], caption = 'Samples of Random walk process') %>% 
+  kable_styling(full_width = T) %>%
+  scroll_box()
+```
+The mean, variance and covariances between the samples (realizations) across time would look like follows:
+
+```{r message=FALSE, warning=FALSE}
+library(matrixStats)
+random.walk.df$mean <- rowSums(random.walk.df %>% select(-one_of('date')))
+random.walk.df$variance <- rowVars(random.walk.df %>% select(-one_of('date', 'mean')) %>% as.matrix())
+random.walk.df$covariance <- NA
+covar.mat <- random.walk.df %>% select(-one_of('date', 'mean', 'variance', 'covariance')) %>% as.matrix() %>% t() %>% cor()
+for (i in 1:30) {
+  random.walk.df$covariance[i+1] <- covar.mat[i,i+1]
+}
+
+p1 <- ggplot(data = random.walk.df, aes(x = date, y = mean)) +
+  geom_point() +
+  labs(y= "Mean", x='Date') + 
+  ggtitle('Mean') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+p2 <- ggplot(data = random.walk.df, aes(x = date, y = variance)) +
+  geom_point() +
+  labs(y= "Variance", x='Date') + 
+  ggtitle('Variance') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+p3 <- ggplot(data = random.walk.df, aes(x = date, y = covariance)) +
+  geom_point() +
+  labs(y= "Covariance (order 1)", x='Date') + 
+  ggtitle('Covariance') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+grid.arrange(p1, p2, p3, nrow=1, ncol = 3)
+rm(random.walk.df)
+```
+
+From the above plot, the mean of Y is equal to its initial, or starting value, which is constant, but as t increases, its variance increases indefinitely, thus violating a condition of stationarity.  
+
+A random walk process is also called as a **unit root process**.
+
+### Random walk with drift
+If the random walk model predicts that the value at time t will equal the last period's value plus a constant, or drift ($\delta$), and a white noise term ($ε_t$), then the process is random walk with a drift.  
+$$ Y_t = \delta +  Y_{t−1} + \epsilon_t $$
+The mean $$ E(Y_t) = E(Y_0 + \sum \epsilon_t + \delta) = Y_0 + t\times\delta $$ so mean is dependent on time   
+and the variance $$ var(Y_t) = t\times \sigma^2 $$ is also dependent on time.  As random walk with drift violates the conditions of stationary process, it is a non-stationary process.  
+```{r}
+random.walk.drift.df <- data.frame(date = today() + days(0:30))
+for(i in 1:100){
+  random.walk.drift.df <- random.walk.drift.df %>% mutate_(.dots=setNames(list(quote(rep(4, 31))), paste0('realization_', i)))
+  for(j in 2:31){
+    random.walk.drift.df[j, i+1] <- random.walk.drift.df[j-1, i+1] + rnorm(n = 1) + 0.5
+  }
+  # random.walk.df[paste0('realisation_', i)] <- lag((random.walk.df %>% select(paste0('realisation_', i)))[[1]])+4
+}
+kable(random.walk.drift.df[c(1,2,3, 10, 15, 30),c(1,2,3, 26, 51, 101)], caption = 'Samples of Random walk with drift process') %>% 
+  kable_styling(full_width = T) %>%
+  scroll_box()
+```
+```{r message=FALSE, warning=FALSE}
+library(matrixStats)
+random.walk.drift.df$mean <- rowSums(random.walk.drift.df %>% select(-one_of('date')))
+random.walk.drift.df$variance <- rowVars(random.walk.drift.df %>% select(-one_of('date', 'mean')) %>% as.matrix())
+random.walk.drift.df$covariance <- NA
+covar.mat <- random.walk.drift.df %>% select(-one_of('date', 'mean', 'variance', 'covariance')) %>% as.matrix() %>% t() %>% cor()
+for (i in 1:30) {
+  random.walk.drift.df$covariance[i+1] <- covar.mat[i,i+1]
+}
+
+p1 <- ggplot(data = random.walk.drift.df, aes(x = date, y = mean)) +
+  geom_point() +
+  labs(y= "Mean", x='Date') + 
+  ggtitle('Mean') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+p2 <- ggplot(data = random.walk.drift.df, aes(x = date, y = variance)) +
+  geom_point() +
+  labs(y= "Variance", x='Date') + 
+  ggtitle('Variance') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+p3 <- ggplot(data = random.walk.drift.df, aes(x = date, y = covariance)) +
+  geom_point() +
+  labs(y= "Covariance (order 1)", x='Date') + 
+  ggtitle('Covariance') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+grid.arrange(p1, p2, p3, nrow=1, ncol = 3)
+rm(random.walk.drift.df)
+```
+
+The mean, variance and the co-variance are all dependent on time.  
+
+### Unit root stochastic process
+Unit root stochastic process is another name for Random walk process. A random walk process can be written as
+$$ Y_t = \rho \times Y_{t−1} + \epsilon_t $$
+Where $\rho = 1$. If $|\rho| < 1$ then the process represents Markov first order auto regressive model which is stationary. Only for $\rho = 1$ we get non-stationary. The distribution of mean, variance and co-variance for $\rho =0.5$ is     
+```{r message=FALSE, warning=FALSE}
+unit.root.df <- data.frame(date = today() + days(0:30))
+for(i in 1:100){
+  unit.root.df <- unit.root.df %>% mutate_(.dots=setNames(list(quote(rep(0, 31))), paste0('realization_', i)))
+  for(j in 2:31){
+    unit.root.df[j, i+1] <- 0.5*unit.root.df[j-1, i+1] + rnorm(n = 1)
+  }
+}
+unit.root.df$mean <- rowSums(unit.root.df %>% select(-one_of('date')))
+unit.root.df$variance <- rowVars(unit.root.df %>% select(-one_of('date', 'mean')) %>% as.matrix())
+unit.root.df$covariance <- NA
+covar.mat <- unit.root.df %>% select(-one_of('date', 'mean', 'variance', 'covariance')) %>% as.matrix() %>% t() %>% cor()
+for (i in 1:30) {
+  unit.root.df$covariance[i+1] <- covar.mat[i,i+1]
+}
+
+p1 <- ggplot(data = unit.root.df, aes(x = date, y = mean)) +
+  geom_point() +
+  labs(y= "Mean", x='Date') + 
+  ggtitle('Mean') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+p2 <- ggplot(data = unit.root.df, aes(x = date, y = variance)) +
+  geom_point() +
+  labs(y= "Variance", x='Date') + 
+  ggtitle('Variance') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+p3 <- ggplot(data = unit.root.df, aes(x = date, y = covariance)) +
+  geom_point() +
+  labs(y= "Covariance (order 1)", x='Date') + 
+  ggtitle('Covariance') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+grid.arrange(p1, p2, p3, nrow=1, ncol = 3)
+rm(unit.root.df)
+
+```
+
+### Deterministic trend process
+In the above random walk and random walk with drift, the trend component is stochastic in nature. If instead the trend is deterministic in nature, it will follow a deterministic trend process. 
+$$ Y_t = β_1 + β_2\times t + \epsilon_t$$
+In a deterministic trend process, the mean is $β_1 + β_2\times t$ which is proportional with time but the variance is constant. This type of process is also called as trend seasonality as subtracting mean of $Y_t$ from $Y_t$ will give us a stationary process. This procedure is called de-trending.  
+```{r}
+deterministic.df <- data.frame(date = today() + days(0:30))
+for(i in 1:100){
+  deterministic.df <- deterministic.df %>% mutate_(.dots=setNames(list(quote(1:31 + rnorm(n = 31))), paste0('realization_', i)))
+}
+kable(deterministic.df[c(1,2,3, 10, 15, 30),c(1,2,3, 26, 51, 101)], caption = 'Samples of Deterministic trend process') %>% 
+  kable_styling(full_width = T) %>%
+  scroll_box()
+```
+```{r message=FALSE, warning=FALSE}
+deterministic.df$mean <- rowSums(deterministic.df %>% select(-one_of('date')))
+deterministic.df$variance <- rowVars(deterministic.df %>% select(-one_of('date', 'mean')) %>% as.matrix())
+deterministic.df$covariance <- NA
+covar.mat <- deterministic.df %>% select(-one_of('date', 'mean', 'variance', 'covariance')) %>% as.matrix() %>% t() %>% cor()
+for (i in 1:30) {
+  deterministic.df$covariance[i+1] <- covar.mat[i,i+1]
+}
+
+p1 <- ggplot(data = deterministic.df, aes(x = date, y = mean)) +
+  geom_point() +
+  labs(y= "Mean", x='Date') + 
+  ggtitle('Mean') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+p2 <- ggplot(data = deterministic.df, aes(x = date, y = variance)) +
+  geom_point() +
+  labs(y= "Variance", x='Date') + 
+  ggtitle('Variance') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+p3 <- ggplot(data = deterministic.df, aes(x = date, y = covariance)) +
+  geom_point() +
+  labs(y= "Covariance (order 1)", x='Date') + 
+  ggtitle('Covariance') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+grid.arrange(p1, p2, p3, nrow=1, ncol = 3)
+rm(deterministic.df)
+```
+
+A combination of deterministic and stochastic trend could also exist in a process. 
+
+## Comparison.
+A comparison of all the processes is shown below:
+```{r}
+set.seed(123)
+comparision.df <- data.frame(date = today() + days(0:30))
+comparision.df <- comparision.df %>% mutate('deterministic.trend' = 0.5*1:31 + rnorm(n = 31),
+                                            'stationary.process' = rnorm(n = 31),
+                                            'random.walk' = rep(1, 31),
+                                            'random.walk.drift' = rep(1, 31)
+                                            )
+for(j in 2:31){
+  comparision.df$random.walk[j] <- comparision.df$random.walk[j-1] + rnorm(n = 1)
+  comparision.df$random.walk.drift[j] <- comparision.df$random.walk.drift[j-1] + rnorm(n = 1) + 0.5
+}
+ggplot(data = comparision.df, aes(x = date)) +
+  geom_line(aes(y = stationary.process, color = 'Stationary process')) +
+  geom_line(aes(y = random.walk, color = 'Random walk')) +
+  geom_line(aes(y = random.walk.drift, color = 'Random walk with drift')) +
+  geom_line(aes(y = deterministic.trend, color = 'Deterministic Trend')) +
+  labs(y= "", x='Date', color = 'Type of process') +
+  ggtitle('Comparison between processes') +
+  theme_minimal()
+```
+
+## References  
+1. [Basic Ecnometrics](https://www.mheducation.co.in/basic-econometrics-9780071333450-india) - Damodar N Gujarati (textbook for reference) 
+2. [Business Analytics: The Science of Data-Driven Decision Making](https://www.wileyindia.com/business-analytics-the-science-of-data-driven-decision-making.html) - Dinesh Kumar (textbook for reference)   
+3. [Customer Analytics at Flipkart.Com](https://store.hbr.org/product/customer-analytics-at-flipkart-com/IMB555) - Naveen Bhansali (case study in Harvard business review)
