@@ -1,0 +1,287 @@
+---
+title: "Stationarity tests"
+author: "Harsha Achyuthuni"
+date: "17/12/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(MASS)
+library(xts)
+library(forecast)
+library(urca)
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+## Tests of stationarity
+
+This is the second post on ARIMA time series forecasting method. In the first post, we discussed about stationarity, random walk and other concepts. In this blog, we are going to discuss about various ways one can test for stationarity.  
+
+Two types of tests are introduced in this blog    
+1. Unit root tests  
+2. Independence tests  
+
+```{r import_data_set, include=FALSE}
+setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data')
+attendance <- read.csv("Attendance_Detail.csv")
+```
+
+## Data
+
+For the following blog, we will use a sample from [attendance data set](https://www.harshaash.website/time-series-eda/) described in EDA blogs.    
+
+```{r attendance_dataset_manupulation, echo=FALSE}
+attendance <- attendance %>% 
+  filter(Was.at.Work) %>% 
+  mutate(in.time.dmy.hm = dmy_hm(paste(Attendance.Date, In.Time)),
+         out.time.dmy.hm = dmy_hm(paste(Attendance.Date, Last.Out.Time)),
+         post.midnight = (out.time.dmy.hm - in.time.dmy.hm < 0))
+attendance$Attendance.Date <- dmy(attendance$Attendance.Date)
+attendance$out.time.dmy.hm[attendance$post.midnight] <- attendance$out.time.dmy.hm[attendance$post.midnight] + days(1)
+attendance <- attendance %>% mutate(hours.worked = out.time.dmy.hm - in.time.dmy.hm)
+attendance$policy.in.time <- 'char'
+msu.intime <- attendance$Attendance.Date > dmy('4/8/2017') & attendance$Attendance.Date <= dmy('17/12/2017')
+walmart.intime <- attendance$Attendance.Date > dmy('17/12/2017') & attendance$Attendance.Date <= dmy('30/4/2018')
+walmart.buffer.intime <- attendance$Attendance.Date > dmy('30/4/2018') & attendance$Attendance.Date <= dmy('8/6/2018')
+walmart.daylight.savings.intime <- attendance$Attendance.Date >= dmy('11/6/2018')
+attendance$policy.in.time[msu.intime] <- '1:00 PM'
+attendance$policy.in.time[walmart.buffer.intime] <- '1:30 PM'
+attendance$policy.in.time[walmart.intime] <- '1:15 PM'
+attendance$policy.in.time[walmart.daylight.savings.intime] <- '12:00 PM'
+attendance <- attendance %>% 
+  mutate(policy.in.time.dmy.hm = ymd_hm(paste(Attendance.Date, policy.in.time))) %>% 
+  mutate(policy.out.time.dmy.hm = policy.in.time.dmy.hm + hours(9)) %>% 
+  mutate(diff.in.time = difftime(policy.in.time.dmy.hm, in.time.dmy.hm, units = 'mins'),
+         diff.out.time = difftime(out.time.dmy.hm, policy.out.time.dmy.hm, units = 'mins')) %>% 
+  filter(diff.in.time >= -15)
+time.series <- xts(attendance$diff.in.time, order.by= attendance$Attendance.Date)
+```
+
+From the time series and ACF plots, one can observe non-stationarity and decreasing trend.  
+```{r}
+autoplot(time.series) +
+  ggtitle("Attendance In - time") +
+  xlab("Time") + ylab("Minutes") +
+  theme_minimal()
+ggAcf(time.series, lag.max = 50) +
+  theme_minimal() + ggtitle("ACF")
+```
+
+### Unit root tests
+As discussed in the previous blog, unit root stochastic process is another name for Random walk process. A random walk process can be written as
+$$ Y_t=\rho \times Y_{t−1} + \epsilon_t $$
+Where $\rho = 1$. If $|\rho|<1$ then the process represents Markov first order auto regressive model which is stationary. Only for $\rho=1$ we get non-stationary. 
+
+The above equation can be alternatively written as 
+$$ Y_t - Y_{t-1} = \Delta Y_t = \delta \times Y_{t-1} + \epsilon_t $$
+where $\delta = \rho -1$. For non-stationarity, the condition now becomes $\delta = 0$ the alternative hypothesis being $\delta < 0$. The null and alternate hypothesis are:  
+$$ H_0: \delta = 0 $$
+$$ H_1 : \delta < 0 $$
+Under this null hypothesis, $Y_{t-1}$ does not follow a normal distribution(or t-distribution).
+
+Dickey and Fuller have shown that for the above null and alternate hypothesis, the the estimated test statistic follows the $\tau$ statistic. If the hypothesis that $\delta=0$ is rejected, that is if the series is stationary, then we can use the t-test for further analysis.  
+
+### Dickey Fuller tests
+The Dickey fuller tests contains two steps.  
+1. Test if the series is stationary  
+2. If the series is not stationary, test what kind of non-stationarity is present  
+
+As non-stationarity can exist in three ways, the dickey fuller test is estimated in three different forms  
+**$Y_t$ is a random walk** : $\Delta Y_t = \delta Y_{t-1} + \epsilon_t$  
+**$Y_t$ is a random walk with drift** : $\Delta Y_t = \beta_1 + \delta Y_{t-1} + \epsilon_t$  
+**$Y_t$ is a random walk with drift around a deterministic trend** : $\Delta Y_t = \beta_1 + \beta_2 t +\delta Y_{t-1} + \epsilon_t$  
+
+In each case, the null hypothesis is that $\delta = 0$, i.e., there is a unit root—the time series is non-stationary. The
+alternative hypothesis is that $\delta < 0$ that is, the time series is stationary.   
+
+If the null hypothesis is **rejected**, it means the following in the three scenarios:  
+1. $Y_t$ is a stationary time series with zero mean in the case of random walk  
+2. $Y_t$ is stationary with a nonzero mean in the case of random walk with drift  
+3. $Y_t$ is stationary around a deterministic trend in case of random walk with drift around a deterministic trend  
+
+The actual estimation procedure is as follows:  
+1. Perform the tests from backwards, i.e., estimate deterministic trend first, then random walk with drift and then random walk. This is to ensure we are not committing specification error  
+2. For the three tests, estimate the $\tau$ statistic and compare with the (MacKinnon) critical tau values, If the computed absolute value of the tau statistic ($|\tau|$) *exceeds* the critical tau values, we reject the Null hypothesis in which case the time series is stationary  
+3. If any of the ($\tau$) values are less than the critical tau value, then we retain the Null hypothesis in which case the time series is non-stationary. The critical $\tau$ values can vary between the three tests  
+
+For the attendance data, the Dickey fuller tests give the following results:  
+```{r message=TRUE, warning=TRUE}
+# Code taken and modified from https://gist.github.com/hankroark/968fc28b767f1e43b5a33b151b771bf9
+# Explaination at https://stats.stackexchange.com/questions/24072/interpreting-rs-ur-df-dickey-fuller-unit-root-test-results
+# CHECK!!!. SOME THINGS MIGHT BE WRONG
+library(urca)
+interp_urdf <- function(urdf, level="5pct") {
+  if(class(urdf) != "ur.df") stop('parameter is not of class ur.df from urca package')
+  if(!(level %in% c("1pct", "5pct", "10pct") ) ) stop('parameter level is not one of 1pct, 5pct, or 10pct')
+
+  cat("========================================================================\n")
+  cat( paste("At the", level, "level:\n") )
+  if(urdf@model == "none") {
+    cat("The test is for type random walk\n")
+    tau1_crit = urdf@cval["tau1",level]
+    tau1_teststat = urdf@teststat["statistic","tau1"]
+    tau1_teststat_wi_crit = abs(tau1_teststat) > tau1_crit
+    if(tau1_teststat_wi_crit) {
+      cat("delta=0: The null hypothesis is not rejected, the series is not stationary\n")
+    } else {
+      cat("delta=0: The null hypothesis is rejected, the series is stationary\n")
+    }
+  } else if(urdf@model == "drift") {
+    cat("The test is for type random walk with drift\n")
+    tau2_crit = urdf@cval["tau2",level]
+    tau2_teststat = urdf@teststat["statistic","tau2"]
+    tau2_teststat_wi_crit = abs(tau2_teststat) > tau2_crit
+    phi1_crit = urdf@cval["phi1",level]
+    phi1_teststat = urdf@teststat["statistic","phi1"]
+    phi1_teststat_wi_crit = phi1_teststat < phi1_crit
+    if(tau2_teststat_wi_crit) {
+      # Unit root present branch
+      cat("delta=0: The first null hypothesis is not rejected, the series is not stationary\n")
+      if(phi1_teststat_wi_crit) {
+        cat("delta=0 and beta1=0: The second null hypothesis is not rejected, the series is not stationary\n")
+        cat("      and there is no drift.\n")
+      } else {
+        cat("delta=0 and beta1=0: The second null hypothesis is rejected, the series is not stationary\n")
+        cat("      and there is drift.\n")
+      }
+    } else {
+      # Unit root not present branch
+      cat("delta=0: The first null hypothesis is rejected, the series is stationary\n")
+      if(phi1_teststat_wi_crit) {
+        cat("delta=0 and beta1=0: The second null hypothesis is not rejected, the series is not stationary\n")
+        cat("      and there is no drift.\n")
+        warning("This is inconsistent with the first null hypothesis.\n")
+      } else {
+        cat("delta=0 and beta1=0: The second null hypothesis is rejected, the series is stationary\n")
+        cat("      and there is drift.\n")
+      }
+    }
+  } else if(urdf@model == "trend") {
+    cat("The test is for type random walk with drift and deterministic trend\n")
+    tau3_crit = urdf@cval["tau3",level]
+    tau3_teststat = urdf@teststat["statistic","tau3"]
+    tau3_teststat_wi_crit = abs(tau3_teststat) > tau3_crit
+    phi2_crit = urdf@cval["phi2",level]
+    phi2_teststat = urdf@teststat["statistic","phi2"]
+    phi2_teststat_wi_crit = phi2_teststat < phi2_crit
+    phi3_crit = urdf@cval["phi3",level]
+    phi3_teststat = urdf@teststat["statistic","phi3"]
+    phi3_teststat_wi_crit = phi3_teststat < phi3_crit
+    if(tau3_teststat_wi_crit) {
+      # First null hypothesis is not rejected, Unit root present branch
+      cat("delta=0: The first null hypothesis is not rejected, the series is not stationary\n")
+      if(phi3_teststat_wi_crit) {
+        # Second null hypothesis is not rejected
+        cat("delta=0 and beta2=0: The second null hypothesis is not rejected, the series is not stationary\n")
+        cat("      and there is no trend\n")
+        if(phi2_teststat_wi_crit) {
+          # Third null hypothesis is not rejected
+          # a0-drift = gamma = a2-trend = 0
+          cat("delta=0 and beta1=0 and beta2=0: The third null hypothesis is not rejected, the series is not stationary\n")
+          cat("      there is no trend, and there is no drift\n")
+        } else {
+          # Third null hypothesis is rejected
+          cat("delta=0 and beta1=0 and beta2=0: The third null hypothesis is rejected, the series is not stationary\n")
+          cat("      there is no trend, and there is drift\n")
+        }
+      }
+      else {
+        # Second null hypothesis is rejected
+        cat("delta=0 and beta2=0: The second null hypothesis is rejected, the series is not stationary\n")
+        cat("      and there is trend\n")
+        if(phi2_teststat_wi_crit) {
+          # Third null hypothesis is not rejected
+          # a0-drift = gamma = a2-trend = 0
+          cat("delta=0 and beta1=0 and beta2=0: The third null hypothesis is not rejected, the series is not stationary\n")
+          cat("      there is no trend, and there is no drift\n")
+          warning("This is inconsistent with the second null hypothesis.\n")
+        } else {
+          # Third null hypothesis is rejected
+          cat("delta=0 and beta1=0 and beta2=0: The third null hypothesis is rejected, the series is not stationary\n")
+          cat("      there is trend, and there may or may not be drift\n")
+          warning("Presence of drift is inconclusive.\n")
+        }
+      }
+    } else {
+      # First null hypothesis is rejected, Unit root not present branch
+      cat("delta=0: The first null hypothesis is rejected, the series is stationary\n")
+      if(phi3_teststat_wi_crit) {
+        cat("delta=0 and beta2=0: The second null hypothesis is not rejected, the series is not stationary\n")
+        cat("      and there is no trend\n")
+        warning("This is inconsistent with the first null hypothesis.\n")
+        if(phi2_teststat_wi_crit) {
+          # Third null hypothesis is not rejected
+          # a0-drift = gamma = a2-trend = 0
+          cat("delta=0 and beta1=0 and beta2=0: The third null hypothesis is not rejected, the series is not stationary\n")
+          cat("      there is no trend, and there is no drift\n")
+          warning("This is inconsistent with the first null hypothesis.\n")
+        } else {
+          # Third null hypothesis is rejected
+          cat("delta=0 and beta1=0 and beta2=0: The third null hypothesis is rejected, the series is stationary\n")
+          cat("      there is no trend, and there is drift\n")
+        }
+      } else {
+        cat("delta=0 and beta2=0: The second null hypothesis is rejected, the series is stationary\n")
+        cat("      and there may or may not be trend\n")
+        warning("Presence of trend is inconclusive.\n")
+        if(phi2_teststat_wi_crit) {
+          # Third null hypothesis is not rejected
+          # a0-drift = gamma = a2-trend = 0
+          cat("delta=0 and beta1=0 and beta2=0: The third null hypothesis is not rejected, the series is not stationary\n")
+          cat("      there is no trend, and there is no drift\n")
+          warning("This is inconsistent with the first and second null hypothesis.\n")
+        } else {
+          # Third null hypothesis is rejected
+          cat("delta=0 and beta1=0 and beta2=0: The third null hypothesis is rejected, the series is stationary\n")
+          cat("      there may or may not be trend, and there may or may not be drift\n")
+          warning("Presence of trend and drift is inconclusive.\n")
+        }
+      }
+    }
+  } else warning('urdf model type is not one of none, drift, or trend')
+  cat("========================================================================\n")
+}
+interp_urdf(ur.df(time.series, type = 'none'))
+interp_urdf(ur.df(time.series, type = 'drift'))
+interp_urdf(ur.df(time.series, type = 'trend'))
+```
+
+The above result should be interpreted as follows (read backwards):  
+3. There might be a deterministic trend in the series there may or may not be a drift coefficient  
+2. The series is non-stationary and there is drift coefficient  
+1. The series is non-stationary  
+
+Therefore the series is not stationary.  
+
+#### Augmented Dickey−Fuller Test
+In conducting the DF test, it was assumed that the error term was uncorrelated. But in case the $\epsilon_t$ are correlated, Dickey and Fuller have developed a test, known as the augmented Dickey–Fuller (ADF) test. This test is conducted by “augmenting” the three equations by adding the lagged values of the dependent variable. The null hypothesis and alternative hypothesis are given by  
+$H_0$: $\gamma$ = 0 (the time series is non-stationary)  
+$H_1$: $\gamma$ < 0 (the time series is stationary)  
+Where $$\Delta y_t = \alpha + \beta t + \gamma y_{t-1} + \delta_1 \Delta y_{t-1} + \delta_2 \Delta y_{t-2} + \dots$$
+
+### Ljung–Box independence test
+Ljung−Box is a test of lack of fit of the forecasting model and checks whether the auto-correlations for the errors are different from zero. The null and alternative hypotheses are given by   
+$H_0$: The model does not show lack of fit   
+$H_1$: The model exhibits lack of fit  
+The Ljung−Box statistic (Q-Statistic) is given by
+$$Q(m) =  n(n+2) \sum_{k=1}^{m}\frac{\rho_k^2}{n-k}$$ 
+where n is the number of observations in the time series, k is the number of lag, $r_k$ is the auto-correlation of lag k, and m is the total number of lags. Q-statistic is an approximate chi-square distribution with m – p – q degrees of freedom where p and q are the AR and MA lags.
+ 
+```{r}
+Box.test(time.series, lag=10, type="Ljung-Box")
+```
+Therefore from Ljung box test, we can conclude that the model shows a lack of fit with stationary process.  
+
+## References:  
+1. [Basic Ecnometrics](https://www.mheducation.co.in/basic-econometrics-9780071333450-india) - Damodar N Gujarati  
+2. [SAS for Forecasting Time Series, Third Edition](https://www.oreilly.com/library/view/sas-for-forecasting/9781629605449/) - Dickey  
+3. [Customer Analytics at Flipkart.Com](https://store.hbr.org/product/customer-analytics-at-flipkart-com/IMB555) - Naveen Bhansali (case study in Harvard business review)  
+4. [This](https://stats.stackexchange.com/questions/24072/interpreting-rs-ur-df-dickey-fuller-unit-root-test-results) discussion on stack overflow  
+
