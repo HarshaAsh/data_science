@@ -1,0 +1,207 @@
+---
+title: "Hierarchical Clustering"
+author: "Harsha Achyuthuni"
+date: "16/12/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(kableExtra)
+library(gridExtra)
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Hierarchical Clustering
+
+Clustering can be used to group customers or markets based on similarities. Customer segmentation can be used to create an appropriate marketing strategy for that segment.  In this blog, we will look at customer segmentation using beer data set. 
+
+Hierarchical clustering is a clustering algorithm which builds a hierarchy from the bottom-up. It uses the following steps to develop clusters:   
+1. Start with each data point in a single cluster  
+2. Find the data points with shortest distance (using an appropriate distance measure) and merge them to form a cluster.   
+3. Repeat step 2 until all data points are merged to form a single cluster.   
+
+### Beer data set
+The beer data set contains 20 records of different type of beer brand and contains information about the calories, alcohol, sodium content and cost. It is taken from [Machine Learning Using Python - Manaranjan Pradhan](https://www.wileyindia.com/machine-learning-using-python.html)  
+```{r cars}
+beer <- read.csv('C:\\Users\\Achyuthuni\\Desktop\\data_science\\data/beer.csv')
+kable(beer, caption = 'Beer dataset') %>% 
+  kable_styling(full_width = T) %>%
+  scroll_box()
+```
+
+### Find distances between all points
+As the features are on different scales, they should be normalized. After normalizing, the distance between every pair of points is computed. The distance metric should be selected based on the type of features. In this particular case, euclidean distance gives better results as the variables are continuous. After normalizing, the distance between every pair of points is shown in a matrix below.  
+```{r}
+beerMatrix <- beer %>% select(-one_of('name')) %>% as.matrix()
+rownames(beerMatrix) <- beer$name
+matrix_dist <- dist(scale(beerMatrix), method = "euclidean")
+matrix_dist
+```
+
+The minimum distance is between 17 and 11 which are Coors and Hamms. These two beers are combined into one cluster and the centroid of the cluster is considered as a point for the next step. The next two closest points/clusters are combined to form a bigger cluster and this continues till all the points are clustered into one big cluster.  
+
+### Dendogram
+Dendrogram is a pictorial representation of merging of various cases as the Euclidean distance is increased. The distance is rescaled to a scale between 0 and 4. By drawing a vertical line at different values of re-scaled distance, one can identify the clusters. The dendogram for beer dataset is shown below.  
+```{r message=FALSE, warning=FALSE}
+library(ggdendro)
+hc <- hclust(matrix_dist, method = 'average')
+ggdendrogram(hc) +
+  ggtitle('Dendogram of beers') +
+  labs(y= "Distance between clusters (scaled)", x='Beer') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))
+```
+
+From the above plot, we can observe that Coors and Hamms were the closest and thus were clustered first.   
+Then Srohs_bohemian_style and Heilemans_Old_Style were merged into one cluster  
+Subsequently, the centroid of the coors-hams cluster is close to Schlitz, so all the three beers were clustered
+And so on until all the beers are finally clustered into one cluster
+
+From the above dendogram, I want to segment customers for effective marketing strategy. How many clusters are ideal?   
+
+If I take a cutoff of distance 2.5 in the dendogram, we have 4 clusters, but if I take a smaller 1.5 as cutoff, the number of clusters increases to 12. So 4 (or 5) clusters seems to be an appropriate number of clusters.  
+
+Let us look at each of the clusters  
+```{r}
+set_labels_params <- function(nbLabels,
+                              direction = c("tb", "bt", "lr", "rl"),
+                              fan       = FALSE) {
+  if (fan) {
+    angle       <-  360 / nbLabels * 1:nbLabels + 90
+    idx         <-  angle >= 90 & angle <= 270
+    angle[idx]  <-  angle[idx] + 180
+    hjust       <-  rep(0, nbLabels)
+    hjust[idx]  <-  1
+  } else {
+    angle       <-  rep(0, nbLabels)
+    hjust       <-  0
+    if (direction %in% c("tb", "bt")) { angle <- angle + 45 }
+    if (direction %in% c("tb", "rl")) { hjust <- 1 }
+  }
+  list(angle = angle, hjust = hjust, vjust = 0.5)
+}
+plot_ggdendro <- function(hcdata,
+                          direction   = c("lr", "rl", "tb", "bt"),
+                          fan         = FALSE,
+                          scale.color = NULL,
+                          branch.size = 1,
+                          label.size  = 3,
+                          nudge.label = 0.01,
+                          expand.y    = 0.1) {
+  
+  direction <- match.arg(direction) # if fan = FALSE
+  ybreaks   <- pretty(segment(hcdata)$y, n = 5)
+  ymax      <- max(segment(hcdata)$y)
+  
+  ## branches
+  p <- ggplot() +
+    geom_segment(data         =  segment(hcdata),
+                 aes(x        =  x,
+                     y        =  y,
+                     xend     =  xend,
+                     yend     =  yend,
+                     linetype =  factor(line),
+                     colour   =  factor(clust)),
+                 lineend      =  "round",
+                 show.legend  =  FALSE,
+                 size         =  branch.size)
+  
+  ## orientation
+  if (fan) {
+    p <- p +
+      coord_polar(direction = -1) +
+      scale_x_continuous(breaks = NULL,
+                         limits = c(0, nrow(label(hcdata)))) +
+      scale_y_reverse(breaks = ybreaks)
+  } else {
+    p <- p + scale_x_continuous(breaks = NULL)
+    if (direction %in% c("rl", "lr")) {
+      p <- p + coord_flip()
+    }
+    if (direction %in% c("bt", "lr")) {
+      p <- p + scale_y_reverse(breaks = ybreaks)
+    } else {
+      p <- p + scale_y_continuous(breaks = ybreaks)
+      nudge.label <- -(nudge.label)
+    }
+  }
+  
+  # labels
+  labelParams <- set_labels_params(nrow(hcdata$labels), direction, fan)
+  hcdata$labels$angle <- labelParams$angle
+  
+  p <- p +
+    geom_text(data        =  label(hcdata),
+              aes(x       =  x,
+                  y       =  y,
+                  label   =  label,
+                  colour  =  factor(clust),
+                  angle   =  angle),
+              vjust       =  labelParams$vjust,
+              hjust       =  labelParams$hjust,
+              nudge_y     =  ymax * nudge.label,
+              size        =  label.size,
+              show.legend =  FALSE)
+  
+  # colors and limits
+  if (!is.null(scale.color)) {
+    p <- p + 
+      scale_color_manual(values = scale.color)
+  }
+  
+  ylim <- -round(ymax * expand.y, 1)
+  p    <- p + expand_limits(y = ylim) + 
+      theme_minimal()
+  
+  p
+}
+dendro_data_k <- function(hc, k) {
+  
+  hcdata    <-  ggdendro::dendro_data(hc, type = "rectangle")
+  seg       <-  hcdata$segments
+  labclust  <-  cutree(hc, k)[hc$order]
+  segclust  <-  rep(0L, nrow(seg))
+  heights   <-  sort(hc$height, decreasing = TRUE)
+  height    <-  mean(c(heights[k], heights[k - 1L]), na.rm = TRUE)
+  
+  for (i in 1:k) {
+    xi      <-  hcdata$labels$x[labclust == i]
+    idx1    <-  seg$x    >= min(xi) & seg$x    <= max(xi)
+    idx2    <-  seg$xend >= min(xi) & seg$xend <= max(xi)
+    idx3    <-  seg$yend < height
+    idx     <-  idx1 & idx2 & idx3
+    segclust[idx] <- i
+  }
+  
+  idx                    <-  which(segclust == 0L)
+  segclust[idx]          <-  segclust[idx + 1L]
+  hcdata$segments$clust  <-  segclust
+  hcdata$segments$line   <-  as.integer(segclust < 1L)
+  hcdata$labels$clust    <-  labclust
+  
+  hcdata
+}
+hcdata <- dendro_data_k(hc, 4)
+
+p <- plot_ggdendro(hcdata,
+                   direction   = "tb",
+                   expand.y    = 0.2)
+p + labs(y= "Distance between clusters (scaled)", x='Beer') +
+  ggtitle('Beer product clustering')
+```
+
+#### Cluster 1
+Cluster 1 contains Becks, Kronenbourg, Heineken and Kirin beers. They are imported brands into the US. They have high alcohol content, low sodium content and high costs. The target customers are brand sensitive and the brands are promoted as premium brands.
+
+#### Cluster 2
+Cluster 2 contains Budweiser, Schlitz, Coors, Hamms, Augsberger etc beers. They have medium alcohol content and medium cost. They are the largest segment of customers.  
+
+#### Cluster 3
+Cluster 3 contains light beers like Coors_light, Budwiser_light, Miller_lite etc. These are beers with low calorie, low sodium and low alcohol content. The target customers are the customer segment who want to drink but are also health conscious.  
+
+## References  
+1. [Business Analytics: The Science of Data-Driven Decision Making](https://www.wileyindia.com/business-analytics-the-science-of-data-driven-decision-making.html) - Dinesh Kumar (textbook for reference)   
+2. [Machine Learning Using Python](https://www.wileyindia.com/machine-learning-using-python.html) - Manaranjan Pradhan and U Dinesh Kumar (textbook for reference)   
+3. Exploratory Data Analysis with R - Roger D. Peng [Online](https://bookdown.org/rdpeng/exdata/)  
+3. UC Business analytics R guide - University of Cincinnati - [Online](https://uc-r.github.io/hc_clustering)  
