@@ -1,0 +1,209 @@
+---
+title: "Factor analysis"
+author: "Harsha Achyuthuni"
+date: "18/12/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(kableExtra)
+library(corrplot)
+library(psych)
+setwd('C:\\Users\\Achyuthuni\\Desktop\\data_science\\data')
+efa <- read.csv("EFA.csv")
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+## Factor analysis
+
+Factor analysis can be performed to combine a large number of variables to smaller number of factors. This is done usually for the following reasons:  
+1. Find interrelationships among different kinds of variables  
+2. Identify common underlying dimension  
+3. Data reduction and removing duplicacy of columns
+
+Among the many types of ways one can do factor analysis, two ways are popular. They are   
+1. Principle component analysis  
+2. Common factor analysis  
+
+PCA considers the total variance in the data while CFA only considers the common variance. In this blog, we are going to discuss about Principal component analysis.  
+
+## Principal component analysis
+PCA is the most widely used exploratory factor analysis technique, It is developed by Pearson and Hotelling. The objective of PCA is to rigidly rotate the axes of p-dimensional space to new positions (principal axes) that have the following properties:  
+1. Ordered such that principal axis 1 has the highest variance, axis 2 has the next highest variance, .... , and axis p has the lowest variance  
+2. Covariance among each pair of the principal axes is zero (the principal axes are uncorrelated)  
+
+## Data and problem
+This dataset contains 90 responses for 14 different variables that customers consider while purchasing car. The survey questions were framed using 5-point likert scale with 1 being very low and 5 being very high. The data can be downloaded from [this link](https://www.promptcloud.com/wp-content/uploads/2017/02/EFA.csv). The variables were the following:  
+1. Price  
+2. Safety  
+3. Exterior looks  
+4. Space and comfort  
+5. Technology  
+6. After sales service  
+7. Resale value  
+8. Fuel type  
+9. Fuel efficiency  
+10. Color  
+11. Maintenance  
+12. Test drive  
+13. Product reviews  
+14. Testimonials  
+A sample of the data is shown:  
+```{r}
+kable(efa %>% sample_n(5), caption = 'Car survey data') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+```
+
+### KMO Index 
+The Kaiser-Meyer-Olkin (KMO) measure of sampling adequacy is an index used to examine the appropriateness of factor analysis.  High values (between 0.5 and 1.0) indicate factor analysis is appropriate.  Values below 0.5 imply that factor analysis may not be appropriate  
+```{r}
+KMO(efa)
+```
+As some variables have KMO close to and less than 5, more data should be captured for the variables for doing factor analysis.  As this is just an example, we will continue to use the same data for analysis.    
+
+### Bartlett's test of sphericity
+Bartlett's test of sphericity is a test statistic used to examine the hypothesis that the variables are uncorrelated in the population.  In other words, the population correlation matrix is an identity matrix; each variable correlates perfectly with itself (r = 1) but has no correlation with the other variables (r = 0).   
+$H_0$: All non diagonal values of correlation matrix are zero  
+$H_1$: Not all diagonal values of correlation matrix are zero  
+
+```{r}
+Bartlett.sphericity.test <- function(x)
+{
+  method <- "Bartlett’s test of sphericity"
+  data.name <- deparse(substitute(x))
+  x <- subset(x, complete.cases(x)) # Omit missing values
+  n <- nrow(x)
+  p <- ncol(x)
+  chisq <- (1-n+(2*p+5)/6)*log(det(cor(x)))
+  df <- p*(p-1)/2
+  p.value <- pchisq(chisq, df, lower.tail=FALSE)
+  names(chisq) <- "X-squared"
+  names(df) <- "df"
+  return(structure(list(statistic=chisq, parameter=df, p.value=p.value, method=method, data.name=data.name), class="htest"))
+}
+Bartlett.sphericity.test(efa)
+corrplot(cor(efa, use="complete.obs"), order = "original", tl.col='black', tl.cex=.75) 
+```
+
+From the above correlation matrix and the test we can observe that there is some dependence between the variables and factor analysis can therefore be performed.  
+
+In this example, the factors can be considered as the underlying thought process while each variable can be considered as the response to the question. While looking for comfort in a car, a person might look into aesthetics, functionality, economic value and credibility. These are factors while the survey questions are variables. 
+
+While replying to a question in a survey, for every variable, the respondent underlying thought process gives weightage to each factor as a function of that variable.  This can be written as (for normalized variables):  
+$$ y_1 = \lambda_{11} f_1 + \lambda_{12} f_2 + \cdots + \lambda_{1m} f_m + \epsilon_1 $$
+$$ y_2 = \lambda_{21} f_1 + \lambda_{22} f_2 + \cdots + \lambda_{2m} f_m + \epsilon_2 $$
+$$\vdots$$
+$$ y_p = \lambda_{p1} f_1 + \lambda_{p2} f_2 + \cdots + \lambda_{pm} f_m + \epsilon_p $$
+Where $f_1, f_2 \cdots$ are the factors and $y_1, y_2 \cdots$ are variables. $\lambda_{pm}$ are called factor loadings, or the correlation between variables and factors.  
+
+### Number of factors
+The number of factors to decompose the dataset should be selected. There are multiple ways of doing it, the most popular ones are:  
+1. Number of eigenvalues greater than 1  
+2. Scree plot  
+3, Percentage of variation explained  
+Let us look at each one of them:
+
+#### Eigen values
+The eigenvalue represents the total variance explained by each factor. If each variable is normalized before the analysis, the maximum eigen value of all the factors combined should be equal to the number of variables (As normalized variables have variation as 1)  
+
+The eigen values(from the co-variance matrix) for this data set is:  
+```{r}
+eigen(cov(efa))$values
+```
+
+Any factor which has eigen value less than 1 explains the variation less than the variation explained by a variable. So one way to identify the number of factors is the number of eigenvalues greater than 1. From the eigen values, the number of factors to consider is 3.
+
+#### Scree plot
+A scree plot is a line plot of the eigenvalues of factors or principal components in an analysis. A scree plot always displays the eigenvalues in a downward curve, ordering the eigenvalues from largest to smallest. According to the scree test, the "elbow" of the graph where the eigenvalues seem to level off is found and factors or components to the left of this point should be retained as significant. It is named after its resemblance to scree(broken rock fragments at the base of cliffs) after its elbow.  
+```{r}
+library(psych)
+fa.parallel(x=efa, fm="minres", fa="fa")
+```
+
+From the scree plot, a significant slope change can be observed after the third or fourth factor. The number of factors to consider from scree plot is 3.  
+
+After identifying the number of factors, the next step in PCA is to create the factors without rotation. This is done in such a way to satisfy:  
+1. Principal axis-1 has the highest variance, axis-2 has the next highest variance, .... , and axis p has the lowest variance  
+2. Co-variance among each pair of the principal axes is zero (the principal axes are uncorrelated)  
+```{r}
+EFAresult1 = factanal(~ ., data=efa, factors = 3, rotation = "none", cutoff = 0.3, 
+                      na.action = na.exclude) #note the formula specification allows NA 
+EFAresult1
+```
+
+The sum of square loading (SS Loadings) represents the eigen values of each loading.  
+The uniqueness of each variable is also shown. $Uniqueness=1−Communality$  where Communality is the SS of all the factor loadings for a given variable. If all the factors jointly explain a large percent of variance in a given variable, that variable has high Communality (and thus low uniqueness).  
+
+Our goal is to name the factors. Sometimes visualizations help. Plotting the factor loadings for the first two factors.  
+```{r}
+load = EFAresult1$loadings[,1:2]
+plot(load, type="n") # set up plot 
+text(load,labels=names(efa),cex=.7) # add variable names
+```
+
+It can be difficult to label factors when they are unrotated, since a description of one factor might overlap with a description of another factor. We can rotate the factors to obtain more straightforward interpretations. Rotations are of various types:  
+1. Varimax rotation: An orthogonal rotation method that minimizes the number of variables that have high loadings on each factor. This method simplifies the interpretation of the factors   
+2. Quartimax rotation: A rotation method that minimizes the number of factors needed to explain each variable. This method simplifies the interpretation of the observed variables  
+3. Equamax rotation: A rotation method that is a combination of the varimax method, which simplifies the factors, and the quartimax method which simplifies the variables  
+4. Direct Oblimin Method: A method for oblique (non-orthogonal) rotation  
+5. Promax rotation: An oblique rotation, which allows factors to be correlated  
+
+The loadings for oblimin method is shown:  
+```{r}
+threefactor <- fa(efa,nfactors = 3,rotate = "oblimin",fm="minres")
+load = threefactor$loadings[,1:2]
+plot(load, type="n") # set up plot 
+text(load,labels=names(efa),cex=.7) # add variable names
+print(fa.sort(threefactor, polar = FALSE)$loadings, cutoff = 0.3)
+```
+In this example, for any rotation, when we consider three factors, one variable is becoming insignificant and is not loading to any factor. In oblimin, the factor Exterior looks is not loading to any factor. If 4 factors were considered, then,  
+
+```{r}
+fourfactor <- fa(efa,nfactors = 4,rotate = "oblimin",fm="minres")
+load = fourfactor$loadings[,1:2]
+plot(load, type="n") # set up plot 
+text(load,labels=names(efa),cex=.7) # add variable names
+print(fa.sort(fourfactor, polar = FALSE)$loadings, cutoff = 0.35)
+```
+This model is single loaded model (simple structure). The factor mapping is as follows:
+```{r}
+fa.diagram(fourfactor)
+```
+
+### Validation
+The factors created can be validated by looking at error metrics, or TLI.  
+```{r}
+print(fourfactor)
+```
+The root mean square of residuals (RMSR) is 0.05 and the RMSEA (root mean square error of approximation) index is 0.052. These are acceptable as these values should be closer to 0.  
+The Tucker-Lewis Index (TLI) is 0.93 – an acceptable value considering it’s over 0.9.  
+The correlation between the newly created factors is small  
+
+### Interpreting the Factors
+After establishing the adequacy of the factors, it’s time for us to interpret the factors. This is the theoretical side of the analysis where we form the factors depending on the variable loadings. In this case, here is how the factors can be created:  
+
+### Factor 1 - Economic value: 
+Factor 1 contains resale value, maintenance, fuel efficiency and price. It is describing the Economic value of the car.  
+
+### Factor 2 - Functional benefits:
+Factor 2 contains Space_comfort, Fuel_Type, After_Sales_Service, Safety and Technology. It is describing the functional benefits of the car
+
+### Factor 3- Aesthetics
+Factor 3 contains color and exterior looks. This factor is describing the Aesthetics of the car  
+
+### Factor 4 - Credibility
+Factor 4 contains Test drive, product reviews and testimonials. It is describing the credibility of the car
+
+## References:  
+1. Multivariate data analysis - Hair, Anderson, Black  
+2. Factors affecting passenger satisfaction levels: a case study of Andhra Pradesh State Road Transport Corporation (India) - Nagadevara - [trid.trb.org](https://trid.trb.org/view/855187)  
+3. [Promptcloud blog on EFA in R](https://www.promptcloud.com/blog/exploratory-factor-analysis-in-r/)  
+4. João Pedro Neto [tutorials](http://www.di.fc.ul.pt/~jpn/r/factoranalysis/factoranalysis.html) - Universidade de lisboa  
+5. Penn state social science research institute [tutorials](https://quantdev.ssri.psu.edu/tutorials/intro-basic-exploratory-factor-analysis)  
+6. Minato Nakazawa [notes](http://minato.sip21c.org/swtips/factor-in-R.pdf) - Kobe University
