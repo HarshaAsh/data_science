@@ -1,0 +1,138 @@
+---
+title: "K Means Clustering"
+author: "Harsha Achyuthuni"
+date: "28/12/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(kableExtra)
+raw_data <- read_csv('..//data//CreditCardData.csv')
+```
+
+## Concept
+K means clustering  is the most commonly used unsupervised machine learning algorithm for partitioning a given data set into a set of k groups. It classifies objects in multiple groups (i.e., clusters), such that objects within the same cluster are as similar as possible (low intra-cluster variation), whereas objects from different clusters are as dissimilar as possible (i.e., high inter-cluster variation).  
+In k-means clustering, each cluster is represented by its center (i.e. centroid).  
+
+## Steps
+In K-means clustering, the observations in the sample are assigned to one of the clusters by using the following steps:   
+1. Choose K observations from the data that are likely to be in different clusters  
+2. The K observations chosen in step 1 are the centroids of those clusters  
+3. For remaining observations, find the cluster closest to the centroid. Add the new observation (say observation j) to the cluster with closest centroid  
+4. Adjust the centroid after adding a new observation to the cluster. The closest centroid is chosen based on an appropriate distance measure  
+5. Repeat step 3 and 4 till all observations are assigned to a cluster  
+
+The centroids keep moving when new observations are added.  
+
+## Data
+The data used in this blog is taken from kaggle. It is a customer segmentation problem to define market strategy. The sample Dataset summarizes the usage behavior of about 9000 active credit card holders during the last 6 months. The file is at a customer level with 18 behavioral variables. Visit [this](https://www.kaggle.com/arjunbhasin2013/ccdata#) link to know more about the data. Sample data is given below.  
+```{r cars}
+raw_data <- raw_data %>% na.omit()
+cluster_data <- raw_data %>% select(-one_of('CUST_ID')) %>% scale()
+kable(raw_data %>% sample_n(5), caption = 'Credit card dataset') %>% 
+  kable_styling(full_width = T) %>%
+  scroll_box()
+```
+
+## Optimal number of clusters
+Identifying the optimal number of clusters is the first step in K-Means clustering. This can be done using many ways, some of which are:  
+1. Business decision  
+2. Calinski and Harabasz index  
+3. Silhouette statistic  
+4. Elbow curve  
+
+### Calinski and Harabasz index  
+Calinhara index is a F-statistic kind of index which compares the between and within cluster variances. It is given by:  
+$$ CH(k) = \frac{B(k)/k-1}{W(k)/(n-k)} $$
+Where k is number of clusters and B(k) and W(k) are between and within cluster variances respectively.  
+```{r}
+library(fpc) # for calinhara
+ideal_k <- data.frame(k = 2:10, calinhara = 0, within.ss = 0)
+for(i in 2:10){
+  km <- kmeans(cluster_data,i)
+  calinhara <- calinhara(cluster_data,km$cluster)
+  ideal_k$within.ss <- km$tot.withinss
+  ideal_k$calinhara[ideal_k$k==i] <- calinhara
+}
+ggplot(ideal_k,aes(x = k, y = calinhara)) +
+  geom_line()+
+  labs(x = 'Number of clusters (k)', y='Calinhara statistic') +
+  theme_minimal()
+```
+
+From the above plot, the ideal k value to be selected is 2.  
+
+### Silhouette statistic
+Silhouette statistic is the ratio of average distance within the cluster with average distance outside the cluster. If a(i) is the average distance between an observation i and other points in the cluster to which observation i belongs and b(i) is the minimum average distance between observation i and observations in other clusters. Then the Silhouette statistic is defined by
+
+$$ S(i) = (\frac{b(i)-a(i)}{Max[a(i), b(i)]})$$
+```{r}
+library(factoextra)
+fviz_nbclust(cluster_data, kmeans, method = "silhouette")
+```
+
+The ideal k using silhouette 2 to 6 as there is not much reduction in silhouette metric.  
+
+## Elbow curve
+Elbow curve is based on within-cluster variation. The location of a bend (knee) in the plot is generally considered as an indicator of the appropriate number of clusters. (see blog on [hierarchical clustering](https://www.harshaash.website/hierarchical-clustering/) for more)
+```{r filter, echo=TRUE, message=FALSE, warning=FALSE}
+fviz_nbclust(cluster_data, kmeans, method = "wss")
+```
+
+From the above three metrics, the optimum value of k is 3.  
+
+## Analyzing the cluster
+K-means can be computed in R with the *kmeans* function. We will group the data into three clusters (centers = 3). The kmeans function also has an *nstart* option that attempts multiple initial configurations and reports on the best one. For example, adding nstart = 25 will generate 25 initial configurations. This approach is often recommended.  
+
+```{r bubble-plot, echo=TRUE, message=FALSE, warning=FALSE}
+final_cluster <- kmeans(cluster_data, centers = 3, nstart = 25)
+```
+
+The final clusters can be visualized below. In the below figure, all the columns are reduced to two columns for visualization using PCA.  
+```{r}
+fviz_cluster(final_cluster, data = cluster_data)
+```
+
+In each column, the variation between the three clusters can be analysed using the following plots.
+```{r}
+raw_data$cluster <- factor(final_cluster$cluster)
+for(column in colnames(raw_data)){
+  if(column %in% c('CUST_ID', 'cluster') ){}
+  else{
+    plot(
+      ggplot(raw_data, aes_string(x='cluster', y= column)) + 
+        geom_boxplot() + ggtitle(column)+
+        theme_minimal()
+      )
+  }
+}
+ggplot(raw_data, aes(PURCHASES, BALANCE, color = cluster, label = CUST_ID)) +
+  geom_point() + 
+  ggtitle('Comparison of balance and purchases for the three clusters')+
+  theme_minimal()
+```
+
+From the comparison plot, we can observe the properties of the three clusters. They are:  
+
+##### Cluster 1
+They are customers who purchase lesser amounts using the card but have reasonably high balance in their account.  
+
+##### Cluster 2
+They are customers who have a low balance in their account and also purchase less using the account.  
+
+##### Cluster 3
+They are customers who purchase in higher value using their card.  
+___________________________________________________
+  
+### References:  
+1. Business Analytics: The Science of Data-Driven Decision Making [Available](https://www.wileyindia.com/business-analytics-the-science-of-data-driven-decision-making.html)  
+2. UC Business Analytics R Programming Guide - University of Cincinnati - [Online](https://uc-r.github.io/kmeans_clustering#silo)  
+3. Alboukadel Kassambara - factoextra package - [git](https://github.com/kassambara/factoextra)
