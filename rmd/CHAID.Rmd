@@ -1,0 +1,68 @@
+---
+title: "CHAID"
+author: "Harsha Achyuthuni"
+date: "02/02/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readxl)
+library(caret)
+```
+
+## Decision Trees
+Decision trees are a collection of predictive analytic techniques that use tree like graphs for predicting the response variable. One such technique is called as CHAID. Decision trees partition the data set into mutually exclusive and exhaustive subsets, which results in the splitting of the original data resembling a tree-like structure. The problem and the content here is taken from [Business Analytics: The Science of Data-Driven Decision Making - Dinesh Kumar](https://www.wileyindia.com/business-analytics-the-science-of-data-driven-decision-making.html)
+
+## CHAID
+Chi-square automatic interaction detection can be used for classifying categorical variables using categorical predictors only.  The splitting of data is done using the following hypothesis tests:  
+1. Chi-square Test of Independence when the response variable, Y, is discrete  
+2. F-test when the response variable, Y, is continuous   
+3. Likelihood Ratio Test when the response variable, Y, is ordinal   
+
+The steps involved in developing a CHAID tree are   
+1. Start with the complete training data in the root node.   
+2. Check the statistical significance of each independent variable depending on the type of dependent variable   
+3. The variable with the least p-value, based on the statistical tests is used for splitting the data set thereby creating subsets. Bonferroni Correction is used for adjusting the significance level alpha. Non-significant categories in a categorical predictor variable with more than two categories may be merged.   
+4. Using independent variables, repeat step 3 for each of the subsets of the data until   
+(a) All the dependent variables are exhausted or they are not statistically significant at alpha.   
+(b) The stopping criteria are met.   
+5. Generate business rules for the terminal nodes (nodes without any branches) of the tree.  
+
+### German Credit rating dataset
+This dataset classifies people described by a set of attributes as good or bad credit risks. (can be downloaded from the [University of California, Irvine machine learning data repository](https://archive.ics.uci.edu/ml/datasets/statlog+(german+credit+data))
+
+```{r cars}
+data <- read_xlsx('../data/Chapter 12 German Credit Rating.xlsx')
+colnames(data) <- make.names(colnames(data))
+data %>% sample_n(5)
+```
+
+In this dataset we want to classify credit based on different factors. If we take the first factor CHK_ACCT
+
+```{r cars}
+library(ggmosaic)
+plot_bivariate_cat <- function(raw_df, pred_column_name){
+  plot_bi_cat_df <- raw_df %>% select_if(function(col) {is.factor(col) | is.character(col)})
+  for(column in colnames(plot_bi_cat_df)){
+    if(column != pred_column_name){
+      plot(ggplot(data = plot_bi_cat_df %>% group_by_(pred_column_name,column) %>% summarise(count = n())) +
+        geom_mosaic(aes_string(weight = 'count', 
+                               x = paste0("product(", pred_column_name," , ", column, ")"), 
+                               fill = pred_column_name), na.rm=TRUE) +
+        labs(x = column, y='%',  title = column) +
+        theme_minimal()+theme(legend.position="bottom") +
+        theme(axis.text.x=element_text(angle = 45, vjust = 0.5, hjust=1)))
+      print(raw_df[column])
+      print(raw_df[pred_column_name])
+      chisq.test(x = raw_df[column], y = raw_df[pred_column_name])
+      # print(test)
+    }
+    print(strrep("-",100))
+  }
+}
+plot_bivariate_cat(data, pred_column_name = 'Credit.classification')
+```
+
+ 

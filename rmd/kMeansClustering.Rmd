@@ -1,9 +1,12 @@
 ---
-title: "K Means Clustering"
-author: "Harsha Achyuthuni"
-date: "28/12/2019"
-output: html_document
+title: "K Means clustering"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
 ---
+Date: 28-12-2019  
+Author: Achyuthuni Sri Harsha
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
