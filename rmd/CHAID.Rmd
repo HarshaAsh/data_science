@@ -1,49 +1,76 @@
 ---
 title: "CHAID"
 author: "Harsha Achyuthuni"
-date: "02/02/2020"
+date: "01/03/2020"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
 library(tidyverse)
 library(readxl)
 library(caret)
+library(gridExtra)
+library(kableExtra)
+setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data')
+raw_df <- read_csv("titanic.csv")
 ```
 
 ## Decision Trees
-Decision trees are a collection of predictive analytic techniques that use tree like graphs for predicting the response variable. One such technique is called as CHAID. Decision trees partition the data set into mutually exclusive and exhaustive subsets, which results in the splitting of the original data resembling a tree-like structure. The problem and the content here is taken from [Business Analytics: The Science of Data-Driven Decision Making - Dinesh Kumar](https://www.wileyindia.com/business-analytics-the-science-of-data-driven-decision-making.html)
+Decision trees are a collection of predictive analytic techniques that use tree-like graphs for predicting the response variable. One such method is  CHAID. Decision trees partition the data set into mutually exclusive and exhaustive subsets, which results in the splitting of the original data resembling a tree-like structure.  
 
 ## CHAID
-Chi-square automatic interaction detection can be used for classifying categorical variables using categorical predictors only.  The splitting of data is done using the following hypothesis tests:  
+We can use Chi-square automatic interaction detection for classifying categorical variables when we have only categorical predictors. In CHAID, we categorise the data based on the following hypothesis tests:   
 1. Chi-square Test of Independence when the response variable, Y, is discrete  
 2. F-test when the response variable, Y, is continuous   
 3. Likelihood Ratio Test when the response variable, Y, is ordinal   
 
-The steps involved in developing a CHAID tree are   
-1. Start with the complete training data in the root node.   
-2. Check the statistical significance of each independent variable depending on the type of dependent variable   
-3. The variable with the least p-value, based on the statistical tests is used for splitting the data set thereby creating subsets. Bonferroni Correction is used for adjusting the significance level alpha. Non-significant categories in a categorical predictor variable with more than two categories may be merged.   
-4. Using independent variables, repeat step 3 for each of the subsets of the data until   
-(a) All the dependent variables are exhausted or they are not statistically significant at alpha.   
-(b) The stopping criteria are met.   
-5. Generate business rules for the terminal nodes (nodes without any branches) of the tree.  
 
-### German Credit rating dataset
-This dataset classifies people described by a set of attributes as good or bad credit risks. (can be downloaded from the [University of California, Irvine machine learning data repository](https://archive.ics.uci.edu/ml/datasets/statlog+(german+credit+data))
+The steps involved in developing a CHAID tree are  
+1. Start with the complete training data in the root node  
+2. Check the statistical significance of each independent variable depending on the type of dependent variable  
+3. The variable with the least p-value, based on the statistical tests is used for splitting the dataset, thereby creating subsets. (We can use Bonferroni correction for adjusting the significance level alpha. We can merge the non-significant categories in a categorical predictor variable with more than two groups)  
+4. Using independent variables, repeat step 3 for each of the subsets of the data until  
+(a) All the dependent variables are exhausted, or they are not statistically significant at alpha  
+(b) We meet the stopping criteria  
+5. Generate business rules for the terminal nodes (nodes without any branches) of the tree  
 
-```{r cars}
-data <- read_xlsx('../data/Chapter 12 German Credit Rating.xlsx')
-colnames(data) <- make.names(colnames(data))
-data %>% sample_n(5)
+
+### Step 1: Start with complete data
+The data used in this blog is the same as the used in other classification posts, i.e. the Titanic [dataset](https://www.kaggle.com/c/titanic/overview) from Kaggle. In this problem, we have to identify who has a higher chance of survival.      
+```{r cleaning_data, echo=FALSE}
+
+colnames(raw_df) <- make.names(colnames(raw_df))
+
+preProcValues <- preProcess(raw_df %>% dplyr::select(-one_of('PassengerId', 'Ticket', 'Cabin', 'Name', 'Survived')),
+                            method = c("knnImpute"),
+                            k = 20,
+                            knnSummary = mean)
+impute_df <- predict(preProcValues, raw_df, na.action = na.pass)
+
+procNames <- data.frame(col = names(preProcValues$mean), mean = preProcValues$mean, sd = preProcValues$std)
+for(i in procNames$col){
+ impute_df[i] <- impute_df[i]*preProcValues$std[i]+preProcValues$mean[i] 
+}
+raw_df <- na.omit(impute_df %>% mutate(Survived = as.factor(if_else(Survived==1, 'I', 'O')), Pclass = as.factor(Pclass),
+                                       Parch = as.factor(Parch), SibSp = as.factor(SibSp)) %>% 
+  mutate_if(is.character, as.factor) %>% dplyr::select(-one_of('PassengerId', 'Ticket', 'Cabin', 'Name')))
+rm(impute_df)
+
+kable(raw_df %>% sample_n(5), caption = 'titanic dataset') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
 ```
 
-In this dataset we want to classify credit based on different factors. If we take the first factor CHK_ACCT
 
-```{r cars}
+#### Step 2: Statistical significance of each variable
+
+In this dataset, Pclass, Gender, SibSp, Parch, Embarked are taken as categorical variables. For categorical variables, the Chi-square Test of Independence test is performed with the null hypothesis ($H_0$) the independent variable and Survival are independent 
+
+```{r bi-cat, echo=FALSE, message=FALSE, warning=FALSE}
+summary_test_df <- data.frame(predictor = c(), test = c(), statistic = c(), df = c(), probability = c())
 library(ggmosaic)
-plot_bivariate_cat <- function(raw_df, pred_column_name){
+plot_bivariate_cat <- function(raw_d, pred_column_name){
   plot_bi_cat_df <- raw_df %>% select_if(function(col) {is.factor(col) | is.character(col)})
   for(column in colnames(plot_bi_cat_df)){
     if(column != pred_column_name){
@@ -54,15 +81,101 @@ plot_bivariate_cat <- function(raw_df, pred_column_name){
         labs(x = column, y='%',  title = column) +
         theme_minimal()+theme(legend.position="bottom") +
         theme(axis.text.x=element_text(angle = 45, vjust = 0.5, hjust=1)))
-      print(raw_df[column])
-      print(raw_df[pred_column_name])
-      chisq.test(x = raw_df[column], y = raw_df[pred_column_name])
-      # print(test)
+      chi.test.df <- plot_bi_cat_df %>% select_(pred_column_name,column)
+      list_x <- chi.test.df[,1][[1]]
+      list_y <- chi.test.df[,2][[1]]
+      print(paste0('Chi-square test for ', column))
+      ch.test <- chisq.test(x = as.factor(list_x), y = as.factor(list_y))
+      print(ch.test)
+      
+      summary_test_df <<- rbind(summary_test_df, data.frame(predictor = column, test = 'chi-Sq', df = ch.test$parameter, 
+                                                            statistic = ch.test$statistic, probability = ch.test$p.value))
     }
-    print(strrep("-",100))
   }
 }
-plot_bivariate_cat(data, pred_column_name = 'Credit.classification')
+
+plot_bivariate_cat(balanced_df, pred_column_name = 'Survived')
 ```
 
+Age and Fare are the continuous variables. For continuous variables, ANOVA is performed with the null hypothesis
+$$H_0: \mu_{class 1} = ...=\mu_{class n}$$
+```{r bi-cont, echo=FALSE, message=FALSE, warning=FALSE}
+library(ineq)
+plot_bivariate_cont <- function(raw_data, pred_column_name){
+  bi_var_df <- raw_df %>% select_if(is.numeric)
+  for(column in colnames(bi_var_df)){
+    p1 <- ggplot(raw_df,
+      aes_string(x = pred_column_name, y= column, group = pred_column_name)) +
+      geom_boxplot() +
+      labs(y=column) +
+      ggtitle(column) +
+      theme_minimal()
+    
+    p2 <- ggplot(raw_df, aes_string(x=column, fill=pred_column_name)) + 
+      geom_histogram(alpha=0.5, position="identity") +
+      theme_minimal()+ theme(legend.position="bottom")
+    grid.arrange(p1, p2, nrow=1, widths = c(1,2))
+    
+    form = as.formula(paste0(column,' ~ ',pred_column_name))
+    anva <- aov(form, raw_df)
+    anova.summary <- summary(anva)
+    print(column)
+    print(anova.summary)
+    # print(strrep("-",100))
+    summary_test_df <<- rbind(summary_test_df, data.frame(predictor = column, test = 'F test', 
+                                                          df = paste0(anova.summary[[1]]$Df[1],anova.summary[[1]]$Df[2], sep = ","),
+                                                          statistic = anova.summary[[1]]$`F value`[1], 
+                                                          probability = anova.summary[[1]]$`Pr(>F)`[1]))
+  }
+}
+plot_bivariate_cont(raw_df, pred_column_name = 'Survived')
+```
+
+#### Step 3: Selecting the best variable to split based on least p-value  
+For all the dependant variables, the summary of the tests and the test statistic, along with the p-value, is given below:
+```{r summary_test_df}
+rownames(summary_test_df) <- c()
+kable(summary_test_df, caption = 'CHAID') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+```
+
+As the p-value for gender is the least, the first split takes place based on gender.  Therefore the first split is done based on gender.  
+```{r, echo=FALSE}
+contingency_table <- table(raw_df$Survived, raw_df$Sex)
+round(contingency_table/colSums(contingency_table), digits = 4)*100
+```
+
+### Step 4: Repeting steps 1,2 and 3 until the stopping criterion
+
+We repeat steps 1, 2 and 3 unless the minimum data points in a leaf are at least 100(stopping criterion) or till the probability value is less than 5 per cent. The final tree is as follows:   
+```{r train, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(1234)
+library(CHAID)
+modified_df <- raw_df %>% 
+   mutate_if(function(col) {length(unique(col)) <= 10 & is.integer(col)}, as.factor) %>% 
+  mutate_if(is.numeric, funs(cut_number(., n=5)))
+
+ctrl <- chaid_control(minsplit = 100, minprob = 0.05)
+full_data <- chaid(Survived ~ ., data = modified_df, control = ctrl)
+
+plot(
+  full_data,
+  main = "newattrit dataset, minsplit = 200, minprob = 0.05",
+  gp = gpar(
+    lty = "solid",
+    lwd = 2,
+    fontsize = 8
+  )
+)
+```
+
+The business rules for the tree can be obtained as:
+```{r}
+print(full_data)
+```
+
+### References:
+1. [Business Analytics: The Science of Data-Driven Decision Making - Dinesh Kumar](https://www.wileyindia.com/business-analytics-the-science-of-data-driven-decision-making.html)  
+2. [Machine Learning- Advanced decision trees](https://www.linkedin.com/learning/machine-learning-ai-advanced-decision-trees/how-quest-handles-nominal-variables?u=26192810)  
  
