@@ -1,0 +1,355 @@
+---
+title: "CART"
+author: "Harsha Achyuthuni"
+date: "25/03/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(caret)
+library(gridExtra)
+library(kableExtra)
+library(rpart)
+library(rpart.plot)
+setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data')
+raw_df <- read_csv("titanic.csv")
+```
+
+## Decision Trees
+Decision trees are a collection of predictive analytic techniques that use tree-like graphs for predicting the response variable. One such method is CHAID explained in a previous [blog](https://www.harshaash.website/chaid-decision-trees/). The most popular decision tree method is the CART or the Classification and regression trees. Decision trees partition the data set into mutually exclusive and exhaustive subsets, which results in the splitting of the original data resembling a tree-like structure.
+
+### CART Classification
+We can use the CART method for regression and classification. In this blog, I will go thru the CART classification in detail using the titanic example. Any decision tree model consists of 5 steps:  
+1. Start with the complete training data in the root node.  
+2. Decide on a splitting criterion  
+3. Split the data into two or more subsets based on the above metric  
+4. Using independent variables, repeat step 3 for each of the subsets of the data until  
+--(a) All the dependent variables are exhausted, or they are not statistically significant at alpha  
+--(b) We meet the stopping criteria  
+5. Generate business rules for the terminal nodes (nodes without any branches) of the tree  
+
+
+### Step 1: Start with complete data
+The data used in this blog is the same as the used in other classification posts, i.e. the Titanic [dataset](https://www.kaggle.com/c/titanic/overview) from Kaggle. In this problem, we have to identify what types of people had a higher chance of survival. A sample of the data is shown below. A basic EDA is performed in the blog on [Logistic regression](https://www.harshaash.website/logistic-regression/).
+
+```{r cleaning_data, echo=FALSE}
+colnames(raw_df) <- make.names(colnames(raw_df))
+
+preProcValues <- preProcess(raw_df %>% dplyr::select(-one_of('PassengerId', 'Ticket', 'Cabin', 'Name', 'Survived')),
+                            method = c("knnImpute"),
+                            k = 20,
+                            knnSummary = mean)
+impute_df <- predict(preProcValues, raw_df, na.action = na.pass)
+
+procNames <- data.frame(col = names(preProcValues$mean), mean = preProcValues$mean, sd = preProcValues$std)
+for(i in procNames$col){
+ impute_df[i] <- impute_df[i]*preProcValues$std[i]+preProcValues$mean[i] 
+}
+raw_df <- na.omit(impute_df %>% mutate(Survived = as.factor(if_else(Survived==1, 'I', 'O')), Pclass = as.factor(Pclass),
+                                       Parch = as.factor(Parch), SibSp = as.factor(SibSp)) %>% 
+  mutate_if(is.character, as.factor) %>% dplyr::select(-one_of('PassengerId', 'Ticket', 'Cabin', 'Name')))
+rm(impute_df)
+
+kable(raw_df %>% sample_n(5), caption = 'Titanic dataset') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+```
+
+
+### Step 2: Decide on a splitting criterion
+In CHAID bases classification, we used p-value from hypothesis tests as the splitting criterion. In CART, we will use impurity metrics like Gini Index and Entropy.  
+
+#### Gini Index
+
+It is defined mathematically as:
+$$ Gini\,Index = \sum_{i=1}^k \sum_{j=1,i\neq 1}^k P(C_i|t)\times P(C_j|t)$$
+where $P(C_i|t)$ = Proportion of observations belonging to class $C_i$ in node t. For a binary classification, 
+
+$$ Gini\,Index =  1 - \sum_{i=1}^k P(C_i|t)^2$$
+
+Gini Index is a measure of total variance across the classes. It has a small value if all of the $P(C_i|t)$ are close to zero or one. For this reason, the Gini index is a measure of node purity. A small value indicates that a node contains observations from a single class predominantly.
+
+#### Entropy
+An alternative to the Gini index is entropy, given by entropy:
+$$ Entropy = - \sum_{i=1}^k P(C_i|t)\times log[P(C_i|t]$$
+Like the Gini index, the entropy is a small value if the node is pure. The Gini index and the entropy are quite similar numerically.
+
+```{r}
+gini_entropy_comparision <- data.frame(p = (1:99)/100) %>% mutate(gini.index = p*(1-p), entropy = -p*log(p) -(1-p)*log(1-p))
+ggplot(gini_entropy_comparision, aes(x = p))+
+  geom_line(aes(y=gini.index, color = 'Gini Index'))+
+  geom_line(aes(y=entropy, color = 'Entropy')) +
+  theme_minimal()+ labs(color = "Impurity type")+
+  xlab('Probability of the positive class')+
+  ylab('Impurity metric')
+  
+```
+
+For this blog, I want to consider the Gini index as my impurity measure. The aim is to minimise the Gini Index as much as possible.  
+
+### 3. Split the data into two or more subsets based on the above metric
+
+The Gini impurity in the base node (complete data) is  
+```{r}
+cross_tab <- table(raw_df$Survived)
+prob_list <- cross_tab[1]/(cross_tab[1]+cross_tab[2])
+gini.index <- prob_list*(1-prob_list)
+print(as.numeric(gini.index))
+```
+
+The impurity of the overall data is 0.236. Let us look at the purity if we split the data based on various features.  
+
+#### Gender:
+If we split based on gender, the male and female branches individually have lower impurity (Gini index) than the base node. I have built the decision tree as the total weighted Gini index after splitting is lesser than the Gini index of the overall data.  
+```{r}
+cross_tab <- table(raw_df$Sex, raw_df$Survived)
+prob_list <- cross_tab[,1]/(cross_tab[,1]+cross_tab[,2])
+gini.index <- prob_list*(1-prob_list)
+entropy <- -prob_list*log(prob_list)-(1-prob_list)*log(1-prob_list)
+
+cross_tab_df <- cross_tab %>% data.frame() %>% spread(Var2, Freq) %>% mutate(proportion.of.obs = (I+O)/sum(cross_tab), child.gini.index = gini.index)
+
+kable(cross_tab_df, caption = 'Gender') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+
+print(paste('The total weighted impurity after the split is:',round(sum(cross_tab_df$proportion.of.obs*cross_tab_df$child.gini.index),4)))
+
+ctrl = rpart.control(maxdepth=1)
+fit <- rpart(Survived~Sex, data = raw_df, method = 'class',control=ctrl)
+rpart.plot(fit, extra = 106)
+```
+
+#### Passenger class
+Similarly, for passenger class, the three categories (if we split into three branches) have an impurity as follows:   
+```{r}
+cross_tab <- table(raw_df$Pclass, raw_df$Survived)
+prob_list <- cross_tab[,1]/(cross_tab[,1]+cross_tab[,2])
+gini.index <- prob_list*(1-prob_list)
+entropy <- -prob_list*log(prob_list)-(1-prob_list)*log(1-prob_list)
+
+cross_tab_df <- cross_tab %>% data.frame() %>% spread(Var2, Freq) %>% mutate(proportion.of.obs = (I+O)/sum(cross_tab), child.gini.index = gini.index)
+
+kable(cross_tab_df, caption = 'Passenger Class') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+```
+
+In CART, we can split the data into two branches only. By combining passenger class 1 and passenger class 2 into one category, we will have the below Gini impurities. I have built the decision tree as the total weighted Gini index after splitting is lesser than the Gini index of the overall data.  
+```{r}
+modified_df <- raw_df %>% mutate(Pclass = if_else(Pclass == '3', '3rd Class', 'First and second Class'))
+
+cross_tab <- table(modified_df$Pclass, modified_df$Survived)
+prob_list <- cross_tab[,1]/(cross_tab[,1]+cross_tab[,2])
+gini.index <- prob_list*(1-prob_list)
+entropy <- -prob_list*log(prob_list)-(1-prob_list)*log(1-prob_list)
+
+cross_tab_df <- cross_tab %>% data.frame() %>% spread(Var2, Freq) %>% mutate(proportion.of.obs = (I+O)/sum(cross_tab), child.gini.index = gini.index)
+
+kable(cross_tab_df, caption = 'Passenger Class') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+print(paste('The total weighted impurity after the split is:',sum(cross_tab_df$proportion.of.obs*cross_tab_df$child.gini.index)))
+
+ctrl = rpart.control(maxdepth=1)
+fit <- rpart(Survived~Pclass, data = raw_df, method = 'class', control=ctrl)
+rpart.plot(fit, extra = 106)
+
+
+```
+
+#### Number of siblings
+The number of siblings is a categorical variable in this problem as the probability of survival is not linearly dependent on the number of siblings. According to intuition, people with one or two siblings will have a higher rate of survival as they will take care of each other. The impurity for each class is:  
+```{r}
+cross_tab <- table(raw_df$SibSp, raw_df$Survived)
+prob_list <- cross_tab[,1]/(cross_tab[,1]+cross_tab[,2])
+gini.index <- prob_list*(1-prob_list)
+entropy <- -prob_list*log(prob_list)-(1-prob_list)*log(1-prob_list)
+
+cross_tab_df <- cross_tab %>% data.frame() %>% spread(Var2, Freq) %>% mutate(proportion.of.obs = (I+O)/sum(cross_tab), child.gini.index = gini.index)
+
+kable(cross_tab_df, caption = 'No of siblings') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+```
+
+By combining the number of siblings of 1 and 2 into one category and all others into another group, we will have the following Gini index:  
+```{r}
+modified_df <- raw_df %>% mutate(SibSp = if_else(SibSp %in% c('1', '2'), 'One or two siblings', 'others'))
+
+cross_tab <- table(modified_df$SibSp, modified_df$Survived)
+prob_list <- cross_tab[,1]/(cross_tab[,1]+cross_tab[,2])
+gini.index <- prob_list*(1-prob_list)
+entropy <- -prob_list*log(prob_list)-(1-prob_list)*log(1-prob_list)
+
+cross_tab_df <- cross_tab %>% data.frame() %>% spread(Var2, Freq) %>% mutate(proportion.of.obs = (I+O)/sum(cross_tab), child.gini.index = gini.index)
+
+kable(cross_tab_df, caption = 'No of siblings') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+print(paste('The total weighted impurity after the split is:',sum(cross_tab_df$proportion.of.obs*cross_tab_df$child.gini.index)))
+
+ctrl = rpart.control(maxdepth=1)
+fit <- rpart(Survived~SibSp, data = raw_df, method = 'class', control=ctrl)
+rpart.plot(fit, extra = 106)
+```
+
+#### Number of parents/children
+
+Just like the number of siblings, the number of parents/children of a person is also a categorical variable. The Gini index among the categories are:  
+```{r}
+cross_tab <- table(raw_df$Parch, raw_df$Survived)
+prob_list <- cross_tab[,1]/(cross_tab[,1]+cross_tab[,2])
+gini.index <- prob_list*(1-prob_list)
+entropy <- -prob_list*log(prob_list)-(1-prob_list)*log(1-prob_list)
+
+cross_tab_df <- cross_tab %>% data.frame() %>% spread(Var2, Freq) %>% mutate(proportion.of.obs = (I+O)/sum(cross_tab), child.gini.index = gini.index)
+
+kable(cross_tab_df, caption = 'Parch') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+```
+
+By combining the number of parents/siblings of 1, 2 and 3 into one group and others into another group, we will have the following impurity:
+```{r}
+modified_df <- raw_df %>% mutate(Parch = if_else(as.character(Parch) %in% c('1', '2', '3'), '1,2&3', 'others'))
+
+cross_tab <- table(modified_df$Parch, modified_df$Survived)
+prob_list <- cross_tab[,1]/(cross_tab[,1]+cross_tab[,2])
+gini.index <- prob_list*(1-prob_list)
+entropy <- -prob_list*log(prob_list)-(1-prob_list)*log(1-prob_list)
+
+cross_tab_df <- cross_tab %>% data.frame() %>% spread(Var2, Freq) %>% mutate(proportion.of.obs = (I+O)/sum(cross_tab), child.gini.index = gini.index)
+
+kable(cross_tab_df, caption = 'Parch') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+print(paste('The total weighted impurity after the split is:',sum(cross_tab_df$proportion.of.obs*cross_tab_df$child.gini.index)))
+
+ctrl = rpart.control(maxdepth=1)
+fit <- rpart(Survived~Parch, data = raw_df, method = 'class' ,control=ctrl)
+rpart.plot(fit, extra = 106)
+```
+
+### Embarked location
+There are three locations where the passengers have embarked. The Gini index within each of the location is:  
+
+```{r}
+cross_tab <- table(raw_df$Embarked, raw_df$Survived)
+prob_list <- cross_tab[,1]/(cross_tab[,1]+cross_tab[,2])
+gini.index <- prob_list*(1-prob_list)
+entropy <- -prob_list*log(prob_list)-(1-prob_list)*log(1-prob_list)
+
+cross_tab_df <- cross_tab %>% data.frame() %>% spread(Var2, Freq) %>% mutate(proportion.of.obs = (I+O)/sum(cross_tab), child.gini.index = gini.index)
+
+kable(cross_tab_df, caption = 'Embarked location') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+```
+Combining Q and S into one category, we have:
+```{r}
+modified_df <- raw_df %>% mutate(Embarked = if_else(Embarked == 'C', 'C', 'Q&S'))
+
+cross_tab <- table(modified_df$Embarked, modified_df$Survived)
+prob_list <- cross_tab[,1]/(cross_tab[,1]+cross_tab[,2])
+gini.index <- prob_list*(1-prob_list)
+entropy <- -prob_list*log(prob_list)-(1-prob_list)*log(1-prob_list)
+
+cross_tab_df <- cross_tab %>% data.frame() %>% spread(Var2, Freq) %>% mutate(proportion.of.obs = (I+O)/sum(cross_tab), child.gini.index = gini.index)
+
+kable(cross_tab_df, caption = 'Embarked location') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+print(paste('The total weighted impurity after the split is:',sum(cross_tab_df$proportion.of.obs*cross_tab_df$child.gini.index)))
+
+ctrl = rpart.control(maxdepth=1)
+fit <- rpart(Survived~Embarked, data = raw_df, method = 'class' ,control=ctrl)
+rpart.plot(fit, extra = 106)
+```
+
+#### Age
+Age is a continuous variable, so we have to find the ideal age to split the data along with the impurity metrics. To find the ideal cutoff, I have plotted the weighted gini index for split based on different ages.
+```{r}
+weighted_entropy <- data.frame(Age = c(), weighted_entropy = c())
+for(i in 1:79){
+  modified_df <- raw_df %>% mutate(Age_class = if_else(Age >= i, 'lower', 'higher')) %>% group_by(Age_class) %>% 
+    summarise(survived_prob = mean(Survived=='I'), proportion.of.obs =n()/nrow(raw_df)) %>% mutate(child.gini.index = survived_prob*(1-survived_prob))
+  
+  weighted_entropy <- rbind(weighted_entropy, data.frame(Age = i, weighted_entropy = sum(modified_df$proportion.of.obs*modified_df$child.gini.index)))
+}
+
+ggplot(weighted_entropy, aes(x = Age, y = weighted_entropy))+ geom_line() + theme_minimal()+ ylab('Weighted Gini index')
+```
+
+We can observe the minimum Gini index when the data is split at Age=7 years. 
+```{r}
+kable(raw_df %>% mutate(Age_class = if_else(Age < 7, '<7', '>=7')) %>% group_by(Age_class) %>% 
+    summarise(survived_prob = mean(Survived=='I'), proportion.of.obs =n()/nrow(raw_df)) %>% mutate(child.gini.index = survived_prob*(1-survived_prob)), 
+      caption = 'Age') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+
+print(paste('The total weighted impurity after the split is:',round(min(weighted_entropy$weighted_entropy),2)))
+ctrl = rpart.control(maxdepth=1)
+fit <- rpart(Survived~Age, data = raw_df, method = 'class', control=ctrl)
+rpart.plot(fit, extra = 106)
+```
+
+#### Fare
+Similar to age, fare is a continuous variable and we have to find the optimal fare to split first.  
+```{r}
+weighted_entropy <- data.frame(Fare = c(), weighted_entropy = c())
+for(i in 1:511){
+  modified_df <- raw_df %>% mutate(Fare_class = if_else(Fare <= i, 'lower', 'higher')) %>% group_by(Fare_class) %>% 
+    summarise(survived_prob = mean(Survived=='I'), proportion.of.obs =n()/nrow(raw_df)) %>% mutate(child.gini.index = survived_prob*(1-survived_prob))
+  
+  weighted_entropy <- rbind(weighted_entropy, data.frame(Fare = i, weighted_entropy = sum(modified_df$proportion.of.obs*modified_df$child.gini.index)))
+}
+
+ggplot(weighted_entropy, aes(x = Fare, y = weighted_entropy))+ geom_line()+ theme_minimal()+ ylab('Weighted Gini index')
+```
+
+The optimal fare is 11. The impurity metrics for this split are:  
+```{r}
+kable(raw_df %>% mutate(Fare_class = if_else(Fare <= 11, '<=11', '>11')) %>% group_by(Fare_class) %>% 
+    summarise(survived_prob = mean(Survived=='I'), proportion.of.obs =n()/nrow(raw_df)) %>% mutate(child.gini.index = survived_prob*(1-survived_prob)), 
+      caption = 'Fare') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+
+```
+
+
+#### Conclusion
+Among all the factors above, Gender has the least Gini Index of 0.16. So the initial split of the data would be on Gender.  
+
+### Step 4: Repeat step 3 until stopping criterion
+After splitting the data based on gender, we will get two data sets. We should perform a similar analysis to step 2 to split the data further, and so on. The splitting should stop when we meet the stopping criterion. Different stopping criterion for CART classification trees are:    
+1. The number of cases in the node is less than some pre-specified limit.     
+2. The purity of the node is more than some pre-specified threshold.   
+3. Depth of the node is more than some pre-specified threshold.   
+4. Predictor values for all records are identical  
+
+In this blog, I want to give a maximum depth of trees as 3. In the machine learning blogs, I will go deeper into how to select ideal stopping criterion. For max depth=3, we get the following decision tree:  
+
+```{r}
+ctrl = rpart.control(maxdepth=3)
+fit <- rpart(Survived~., data = raw_df, method = 'class', control=ctrl)
+rpart.plot(fit, extra = 106)
+
+```
+
+### Step 5: Making business rules
+From the above tree, I can see generate the following rules:  
+1. A female passenger has a higher probability of surviving unless she is travelling in third class with a fare less than 23.   
+2. A male passenger has a lower likelihood of surviving unless he is a child of age less than six years and with up to two siblings.   
+
+Using this decision tree, we can observe how sociological factors like gender, age and monetary status affected the decisions on who would get into a lifeboat at a crucial time during the titanic disaster.  
+
+## References:  
+1. [Business Analytics: The Science of Data-Driven Decision Making - Dinesh Kumar](https://www.wileyindia.com/business-analytics-the-science-of-data-driven-decision-making.html)    
+2. [Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow, 2nd Edition](https://www.oreilly.com/library/view/hands-on-machine-learning/9781492032632/)    
+3. [An Introduction to Statistical Learning: With Applications in R](http://faculty.marshall.usc.edu/gareth-james/ISL/)   
+ 
