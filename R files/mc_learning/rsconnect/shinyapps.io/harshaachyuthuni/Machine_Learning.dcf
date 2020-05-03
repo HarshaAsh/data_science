@@ -1,0 +1,13 @@
+name: Machine_Learning
+title: Machine_Learning
+username:
+account: harshaachyuthuni
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 1623931
+bundleId: 2699601
+url: https://harshaachyuthuni.shinyapps.io/Machine_Learning/
+when: 1577802452.34567
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: mc_learning/server.R|mc_learning/titanic.csv|mc_learning/ui.R
