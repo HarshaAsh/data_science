@@ -1,0 +1,120 @@
+---
+title: "Handling imbalanced classes"
+author: "Harsha Achyuthuni"
+date: "05/09/2020"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+library(tidyverse)
+library(caret)
+library(gridExtra)
+library(kableExtra)
+library(rpart)
+library(rpart.plot)
+
+```
+
+## What are imbalanced classes
+
+Imbalanced classes is a significant issue in classification problems. Class imbalance happens when the dependant variable has one class with a higher frequency compared to the lower class. Take an example of the below data.
+
+```{r basic, echo=FALSE, message=FALSE, warning=FALSE}
+raw_df <- data.frame(value = 1:50, class = 1:50, x = 1:5, y = 1:50)
+raw_df <- raw_df %>% mutate(class = if_else(value<=10, 'Red', 'Green'), y = ceiling(value/5))
+raw_df %>% 
+ggplot(aes(x=x, y=y, size=1, color=class, label = value)) +
+    geom_point(alpha=0.4) + 
+    scale_size(range = c(1, 19)) +
+    geom_text(hjust = 0.5, size = 5)+ theme_void() + theme(legend.position='none')
+```
+
+In this data, the class in blue is the minority class with a class imbalance of 10/40 = 25%. Such behaviour is observed in various problems such as:  
+1. Fraud detection  
+2. Conversion prediction  
+3. Spam detection  
+4. Churn prediction    
+5. Outlier detection  
+Each of these problem statements is binary class problems with the minority class having a significantly lower frequency than the majority class. Despite this, the prediction of the minority class is more important.  
+
+## Why is this a problem?
+From the above data, we could create a model which predicts the class always as *Red*. This model will have an accuracy of 75%. If this were fraud detection, for example, then this prediction would be worthless as we would not be predicting any fraud.  
+In the above example, it is easy to split the data accurately into two classes, i.e. those above 10 are red class and the remaining are blue. This can be done as this data is linearly separable. However, in most cases, if we are using accuracy or AUC for prediction, then we would reach the model that always predicts Red. This can be sometimes resolved by changing the optimising metric to use while training, like sensitivity or specificity, which will be described in another blog. In any case, it is good to balance the classes before training a machine learning model.  
+
+## How to resolve this issue?  
+Balancing the classes means reducing the imbalance in the dataset. This can be achieved in many ways, but three are discussed in this blog. They are:
+1. Up-sampling
+2. Down-sampling
+3. SMOTE sampling
+
+### Upsampling
+In up-sampling, we randomly sample (with replacement) the minority class to be the same size as the majority class. While this retains the full information of both the classes, the size of the data will become much larger. This can cause data handling and speed issues.  
+
+```{r up-sampling, echo=FALSE}
+upSample(raw_df$value, as.factor(raw_df$class), list=F) %>% 
+  mutate_if(is.factor, as.character) %>% 
+  mutate(value = c(41:80, 1:40)) %>% mutate(x1 = (value+4) %% 5 ,y = ceiling(value/5)) %>% 
+  ggplot(aes(x=x1, y=y, size=1, color=Class, label = x)) +
+  geom_point(alpha=0.4) +
+  scale_size(range = c(1, 19)) +
+  geom_text(hjust = 0.5, size = 5)+ theme_void() + theme(legend.position='none')
+```
+
+### Downsampling
+In down-sampling, we subset the majority class in such a way that their frequency is similar to the minority class. This will create a smaller data-set which is easier to train, but the information from the majority class can be lost.  
+
+```{r down-sampling, echo=FALSE}
+downSample(raw_df$value, as.factor(raw_df$class), list=F) %>% 
+  mutate_if(is.factor, as.character) %>% 
+  mutate(x1 = (x+4) %% 5 ,y = ceiling(x/5)) %>% 
+  ggplot(aes(x=x1, y=y, size=1, color=Class, label = x)) +
+  geom_point(alpha=0.4) +
+  scale_size(range = c(1, 19)) +
+  geom_text(hjust = 0.5, size = 5)+ theme_void() + theme(legend.position='none')
+```
+
+
+### SMOTE Sampling
+SMOTE is a technique which down-sample the majority class and synthesises new data points in the minority class. SMOTE stands for Synthetic Minority Over-sampling Technique. Refer [this paper](https://www.jair.org/index.php/jair/article/view/10302) for more.
+
+```{r smote, echo=FALSE}
+library(DMwR)
+
+SMOTE(form = class1 ~ value, data  = raw_df %>% mutate(class1 = factor(class)) %>% select(value, class1)) %>% 
+  arrange(value) %>% as.data.frame() %>% 
+  mutate(value1 = 1:70) %>% mutate(x = (value1+4) %% 5 ,y = ceiling(value1/5)) %>%
+  ggplot(aes(x=x, y=y, size=1, color=class1, label = round(value,1))) +
+  geom_point(alpha=0.4) +
+  scale_size(range = c(1, 19)) +
+  geom_text(hjust = 0.5, size = 5)+ theme_void() + theme(legend.position='none')
+```
+
+
+### ROSE Sampling
+
+ROSE sampling is another synthetic sampling technique which creates synthetic minority and majority classes to handle an imbalance in the dataset. Read [this paper](https://link.springer.com/article/10.1007/s10618-012-0295-5) for more.
+
+```{r rose, echo=FALSE}
+
+library(ROSE)
+
+rose_train <- ROSE(class ~ value, data  = raw_df, hmult.majo=1.25, hmult.mino=1.25)$data
+rose_train %>% arrange(value) %>% 
+  mutate(value1 = 1:50) %>% mutate(x = (value1+4) %% 5 ,y = ceiling(value1/5)) %>%  
+  ggplot(aes(x=x, y=y, size=1, color=class, label = round(value,1))) +
+  geom_point(alpha=0.4) +
+  scale_size(range = c(1, 19)) +
+  geom_text(hjust = 0.5, size = 5)+ theme_void() + theme(legend.position='none')
+```
+
+## References
+1. Menardi, G., Torelli, N. Training and assessing classification rules with imbalanced data. Data Min Knowl Disc 28, 92–122 (2014).  
+2. Chawla, N.V., Bowyer, K.W., Hall, L.O. and Kegelmeyer, W.P., 2002. SMOTE: synthetic minority over-sampling technique. Journal of artificial intelligence research, 16, pp.321-357.  
+3. Caret documentation: https://topepo.github.io/caret/subsampling-for-class-imbalances.html  
