@@ -1,0 +1,200 @@
+---
+title: "Linear Algebra - Vectors"
+author: "Harsha Achyuthuni"
+date: "26/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(geometry)
+```
+
+## Topics covered
+1. Basics of Vectors  
+2. Subspaces and spans  
+3. Linear independence of vectors    
+4. Basis, Norms, inner products and their properties  
+
+
+## Basics of vectors
+Consider two vectors a and b
+```{r}
+a <- c(1,2)
+b <- c(1,1)
+```
+
+The two vectors can be visualised in a 2D coordinate system as follows:
+```{r echo=FALSE}
+vecs <- data.frame(vname=c("a","b"), 
+                   x0=c(0,0),y0=c(0,0), x1=c(1,1) ,y1=c(2,1), 
+                   col=1:2)
+p <- plot(NA, xlim=c(0,3), ylim=c(0,3), xlab="X", ylab="Y", lwd=3)
+p <- with(vecs, mapply("arrows", x0, y0, x1,y1,col=col,lwd=3))
+p <- with(vecs, mapply('text', x=x1-.1, y=y1+.1, labels=c('a', 'b') ))
+```
+
+We can perform two types of linear operations on these vectors:  
+1. Vector addition  
+2. Multiplication of the vector with a scalar  
+
+Vector addition:  
+If we add a and b together, the sum would be a vector whose members are the sum of the corresponding members from a and b.  
+```{r}
+a+b
+```
+
+```{r echo=FALSE}
+vecs <- data.frame(vname=c("a","b", "a+b"), 
+                   x0=c(1,0,0),y0=c(1,0,0), x1=c(2,1,2) ,y1=c(3,1,3), 
+                   col=1:3)
+p <- plot(NA, xlim=c(0,3), ylim=c(0,3), xlab="X", ylab="Y", lwd=3)
+p <- with(vecs, mapply("arrows", x0, y0, x1,y1,col=col,lwd=3))
+p <- with(vecs, mapply('text', x=(x1+x0)/2, y=(y1+y0)/2, labels=c('a', 'b', 'a+b') ))
+```
+
+Vector multiplication:
+If we multiply b by 2, we will get a vector with each of its members multiplied by 2.
+```{r}
+2*b
+```
+
+```{r echo=FALSE}
+vecs <- data.frame(vname=c("b","2b"), 
+                   x0=c(0,0),y0=c(0,0), x1=c(2,1) ,y1=c(2,1), 
+                   col=1:2)
+p <- plot(NA, xlim=c(0,3), ylim=c(0,3), xlab="X", ylab="Y", lwd=3)
+p <- with(vecs, mapply("arrows", x0, y0, x1,y1,col=col,lwd=3))
+p <- with(vecs, mapply('text', x=x1-.1, y=y1+.1, labels=c('2b', 'b') ))
+```
+  
+  
+## Subspaces and span
+As we can perform only two kinds of linear operations on the vectors, any linear combinations will be of the form:  
+$$ S= \alpha a + \beta b $$
+Where $\alpha$ and $\beta$ are real numbers and $a$ and $b$ are vectors.  
+
+What about all possible linear combinations of $a$  and $b$?  
+
+```{r echo=FALSE}
+# library("animation")
+# oopt <- ani.options(interval = 0.2, nmax = 100)
+# x <- cumsum(rnorm(n = ani.options("nmax")))
+# ani.record(reset = TRUE)
+# par(bg = "white", mar = c(4, 4, 0.1, 0.1))
+# 
+# for(i in c(1,0.5, 0.25,0.75, 0, -0.25, -0.5, -0.75, -1)){
+#   for(j in c(1.25,1,0.5, 0.25,0.75,0, -0.25, -0.5, -0.75, -1, -1.25)){
+#     lin_comb <- i*a+j*b
+#     ia <- i*a
+#     jb <- j*b
+#     vecs <- data.frame(vname=c("a", "transb", "a+b"), 
+#                    x0=c(0,ia[1],0),y0=c(0,ia[2],0), x1=c(ia[1],lin_comb[1],lin_comb[1]) ,y1=c(ia[2],lin_comb[2],lin_comb[2]), 
+#                    col=1:3)
+#     p <- plot(NA, xlim=c(-2,2), ylim=c(-3,3), xlab="X", ylab="Y", lwd=3)
+#     p <- with(vecs, mapply("arrows", x0, y0, x1,y1,col=col,lwd=3))
+#     p <- with(vecs, mapply('text', x=(x1+x0)/2, y=(y1+y0)/2, labels=c(paste0(i,'a'),paste0(j,'b'),paste0(i,'a+',j,'b') )))
+#     ani.record()
+#   }
+# }
+# saveGIF(ani.replay())
+# ani.replay()
+# ani.options(oopt)
+
+```
+
+The linear combination of the vector a and b form the entire 2D plane.  
+
+Vector space is the space in which the vector can exist. A 2D vector, like a or b, will have vector space of $R^2$ and a 3D vector like d=[1,2,3] is in the vector space $R^3$.   
+Span: The set of all possible linear combinations of vectors is called the span of those set of vectors.  
+
+For the above two vectors a = [1,2] and b=[1,1], the entire 2d space is the span, as we can get every vector in the 2d space as a linear combination of the two vectors.  
+
+To explain the difference between vector space and vector span, consider the two vectors
+d=[1,2,3] and e=[1,1,1]
+As the two vectors are in 3 dimensions, they have a vector space of 3 or $R^3$.  
+Adding d+e I get another vector in 3d.  
+
+
+```{r}
+d <- c(1,2,3)
+e <- c(1,1,1)
+d+e
+```
+```{r include=FALSE}
+library(plot3D)
+f <- d+e
+
+vecs <- data.frame(vname=c("d", "transe", "d+e"), 
+                    x0=c(0,d[1],0),y0=c(0,d[2],0),z0=c(0,d[3],0), 
+                    x1=c(d[1],f[1],f[1]), y1=c(d[2],f[2],f[2]),z1=c(d[3],f[3],f[3]), 
+                    col=1:3)
+arrows3D(vecs$x0,vecs$y0, vecs$z0, x1 = vecs$x1, y1=vecs$y1 , z1 = vecs$z1)
+```
+
+But what are all the linear combinations for d and e?  
+
+```{r echo=FALSE}
+# library("animation")
+# oopt <- ani.options(interval = 0.2, nmax = 100)
+# x <- cumsum(rnorm(n = ani.options("nmax")))
+# ani.record(reset = TRUE)
+# par(bg = "white", mar = c(4, 4, 0.1, 0.1))
+# 
+# for(i in c(1,0.5, 0.25,0.75, 0, -0.25, -0.5, -0.75, -1)){
+#   for(j in c(1.25,1,0.5, 0.25,0.75,0, -0.25, -0.5, -0.75, -1, -1.25)){
+#     f <- i*d+j*e
+#     vecs <- data.frame(vname=c("d", "transe", "d+e"), 
+#                     x0=0,y0=0,z0=0, 
+#                     x1=f[1], y1=f[2],z1=f[3], 
+#                     col=1)
+#     arrows3D(vecs$x0,vecs$y0, vecs$z0, x1 = vecs$x1, y1=vecs$y1 , z1 = vecs$z1, 
+#               xlim = c(-3,3), ylim = c(-3,3), zlim = c(-3,3))
+#     ani.record()
+#   }
+# }
+# saveGIF(ani.replay())
+# # ani.replay()
+# # ani.options(oopt)
+# library(rgl)
+# plot3d(replicate(2, 1:3), type = 'n', xlim = c(-3, 3), ylim = c(-3, 3), zlim = c(-3, 3), xlab = '', ylab = '', zlab = '')
+# planes3d(c(1,1,0),c(2,1,0),c(3,1,0), col = 'red', alpha = 0.6, top=F)
+```
+
+This forms a 2d plane which goes thru the origin. Therefore these vectors span a plane (in $R^2$) although their vector space is ($R^3$).  
+
+The maximum span that any set of vectors can have is equal to their vector space.  
+
+## Linear Independence
+Linear independence is when one vector has no relationship with another. In the first example with a=[1,2] and b=[1,1], any vectors in the 2d space can be written as a linear combination of a and b. In the second example with d=[1,2,3] and e=[1,1,1], any vector on the plane can be written as a linear combination of d and e. A vector which is not in the plane, like f = [2,3,3] is linearly independent of d and e, as no $\alpha$ and $\beta$ satisfy $f=\alpha d+\beta e$.  
+
+In a vector space of *n* dimensions (vector space is n), there can be at max n vectors which are linearly independent.   
+
+## Bases, norms and inner products
+A basis for $R^n$ space is any linearly independent set of vectors S such that span(S) = n.  
+From the above examples, a and b are in the vector space $R^2$ and also have their span as $R^2$. Therefore they form a basis for $R^2$.  
+Similarly, the three independent vectors d, e and f are in the vector space $R^3$ and form a basis for $R^3$.   
+
+The standard basis for $R^2$ is [1.0] and [0,1].    
+
+The norm of the vector is the length of the vector.
+
+$$ l_2 \,norm(\bar{v}) = \sqrt{x_1^2 + y_1^2+..} $$
+
+```{r}
+norm(a,  type="2")
+norm(d,  type="2")
+```
+
+The dot product (or inner product) takes two vectors as an input and returns a number as an output. It is defined as $\bar{x}.\bar{y} = \sum{x_i\times y_i}$. It represents the length of the shadow of one vector on the other.  
+
+```{r}
+library(geometry)
+dot(a,b)
+```
+
+In the next post in this series, I will talk about matrices.  
+
+References:
+1. [Strang, G. (2016). Introduction to Linear Algebra. Wellesley-Cambridge Press](http://math.mit.edu/~gs/linearalgebra/)
+
