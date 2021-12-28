@@ -1,0 +1,297 @@
+---
+title: "Seasonal time series"
+author: "Harsha Achyuthuni"
+date: "28/12/2021"
+output: 
+  html_document:
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(MASS)
+library(xts)
+library(forecast)
+library(data.table)
+library(kableExtra)
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+## Data and context
+This blog is inspired by the work done at [www.andreasgeorgopoulos.com](https://www.andreasgeorgopoulos.com/forecast-demand/) for predicting the demand for lettuce in a particular store (46673) fast food chain of restaurants. The data and EDA for the same can be found in the above link. You can find the same in my git repository.    
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+setwd('..\\..\\data')
+ingredients <- read.csv('ingredients.csv')
+menu_items <- read.csv('menu_items.csv')
+menuitem <- read.csv("menuitem.csv")
+portion_uom_types <- read.csv("portion_uom_types.csv")
+pos_ordersale <- read.csv("pos_ordersale.csv")
+recipe_ingredient_assignments <- read.csv("recipe_ingredient_assignments.csv")
+recipe_sub_recipe_assignments <- read.csv("recipe_sub_recipe_assignments.csv")
+recipes <- read.csv("recipes.csv")
+sub_recipe_ingr_assignments <- read.csv("sub_recipe_ingr_assignments.csv")
+sub_recipes <- read.csv("sub_recipes.csv")
+```
+
+The historical demand for Lettuce for the first ten days is shown below.  
+
+```{r MainCodeChunk01971614, echo=FALSE, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+# There are two ingredients called Lettuce, with ID 27 and 291.   
+# 
+# The following steps can calculate the total demand for Lettuce in the store 46673:  
+# 1. Identifying the recipes and sub-recipes that use Lettuce  
+# 2. Calculating the amount of Lettuce required in each recipe    
+# 3. Mapping recipes to menu items in the store    
+# 4. Aggregating the sales of each menu item to get the total Lettuce used in a day    
+# 5. Converting from grams to ounces if required  
+
+final_df <- recipe_sub_recipe_assignments %>% merge(
+    # Selecting the recipes that have Lettuce in the sub-recipe (Ingredient Lettuce has id 27 and 291)
+    sub_recipe_ingr_assignments %>% dplyr::filter(IngredientId %in% c(27, 291)),
+    by = 'SubRecipeId'
+  ) %>% 
+  filter(Factor>0) %>% # Selecting only those recipes that use Lettuce 
+  group_by(RecipeId, IngredientId) %>%
+  # Total quantity of Lettuce in the recipe is the amount of Lettuce used in the sub-recipe times the quantity of sub-recipe used in the recipe.
+  dplyr::summarise(Quantity = sum(Quantity*Factor)) %>%
+  
+  # Joining with the recipes that use Lettuce in their ingredients directly (Ingredient Lettuce has id 27 and 291)
+  rbind(recipe_ingredient_assignments %>% dplyr::filter(IngredientId %in% c(27, 291))) %>% 
+  
+  # There can be recipes that use Lettuce both directly as an ingredient as well as a part of sub-recipe.
+  # Combining the total quantity of Lettuce used in any ingredient.
+  group_by(RecipeId, IngredientId) %>%
+  summarise(Quantity = sum(Quantity)) %>% 
+  
+  # Join the dataset with Menu items. The below tabel will have all the menu items that use Lettuce along with their quantity
+  merge(menu_items, by = 'RecipeId') %>% 
+  group_by(MenuItemName, MenuItemDescription, PLU, MenuItemId, IngredientId) %>% 
+  summarise(Quantity_of_lettuce = sum(Quantity)) %>% 
+  
+  # Joining the dataset with menuitem table that maps the sales for the menu-items in the store 46673 
+  merge(menuitem %>% filter(StoreNumber == 46673), 
+        by.x = c('MenuItemId', "PLU"), by.y = c("Id", "PLU")) %>% 
+  # The total quantity of lettue used in a day is equal to the sum of different menu-items ordered times the quantity of lettuce in those menu items
+  group_by(date, IngredientId) %>% 
+  summarise(quantity_lettuce = sum(Quantity_of_lettuce*Quantity))
+  # No conversions required as only ingredient with id 27 is used in the store and ingredient 27 is in quintals
+
+kable(head(final_df, 10), caption = 'Demand of lettuce for the first ten days') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+
+```
+
+## Demand forecasting with Seasonality
+The Lettuce in store 46673 shows a clear seasonal pattern. The quantity of Lettuce used seems to depend on the day of the week. From this plot, there seems to be no discernible trend in the quantity of Lettuce used.  
+ 
+```{r echo=FALSE, fig.height=6, fig.width=12, message=FALSE, warning=FALSE, paged.print=FALSE}
+final_df$date <- as.Date(final_df$date, "%y-%m-%d")
+time.series <- ts(final_df$quantity_lettuce, frequency=7)
+
+autoplot(time.series) +
+  ggtitle("Demand for Lettuce") +
+  xlab("Weeks (since 2015-03-05)") + ylab("Quintals") +
+  theme_minimal()#+theme(plot.title = element_text(size = 25, face = "bold"))
+```
+
+### Visualising seasonality  
+We can visualize this seasonality using seasonal plots. From these plots, we can see that the demand for Lettuce is least on Tuesday while highest on Wednesdays. Thus, a clear weekly seasonality in the data can be observed in the data.
+
+```{r echo=FALSE, fig.height=6, fig.width=12, message=FALSE, warning=FALSE, paged.print=FALSE}
+ggseasonplot(time.series, year.labels=TRUE, year.labels.left=TRUE) +
+  ylab("Quintals") +xlab('Weekday')+
+  ggtitle("Seasonal plot: Lettuce Demand")+
+  theme_minimal()#+theme(plot.title = element_text(size = 25, face = "bold"))
+```
+
+The same is more evident in polar coordinates.    
+
+```{r echo=FALSE, fig.height=12, fig.width=12, message=FALSE, warning=FALSE, paged.print=FALSE}
+ggseasonplot(time.series, polar=TRUE) +
+ ylab("Quintals") + xlab('Weekday')+ labs(colour = "Weeks (since 2015-03-05)")+
+  ggtitle("Seasonal plot: Lettuce Demand (polar)")+
+  theme_minimal()
+```
+
+We can see the similarity in demand within weekdays by looking at the seasonal sub-series plots where data for each weekday is collected together. The mean and the variance across weeks for each of the weekdays can be seen.  
+
+```{r fig.height=6, fig.width=12, message=FALSE, warning=FALSE, paged.print=FALSE}
+ggsubseriesplot(time.series) +
+  ylab("Quintals") + xlab('Weekday')+
+  ggtitle("Seasonal subseries plot: Lettuce demand")+
+  theme_minimal()#+theme(plot.title = element_text(size = 25, face = "bold"))
+```
+
+## SARIMA
+As the data is seasonal, we will need to use SARIMA (Seasonal ARIMA). By looking at these plots, I suspect that the series is stationary. This can be validated using Dickey-Fuller and KPSS tests.    
+
+### Dickey−Fuller Test
+Dickey−Fuller test is a hypothesis test in which the null hypothesis and alternative hypothesis are given by  
+$H_0$: $\gamma$ = 0 (the time series is non-stationary)  
+$H_1$: $\gamma$ < 0 (the time series is stationary)  
+Where $$\Delta y_t = \alpha + \beta t + \gamma y_{t-1} + \delta_1 \Delta y_{t-1} + \delta_2 \Delta y_{t-2} + \dots$$
+
+```{r pressure, echo=FALSE}
+library(tseries)
+adf.test(time.series, alternative = c("stationary", "explosive"),
+         k = trunc((length(time.series)-1)^(1/3)))
+```
+As p value is less than the cutoff $\alpha = 5\%$, rejecting the null hypothesis that the time series is non-stationary. The time series is stationary.    
+
+### KPSS Test
+The null hypothesis for the KPSS test is that the data is stationary.     
+```{r warning=FALSE}
+tseries::kpss.test(time.series, null="Trend")
+```
+As the p-value is greater than the cutoff $ \alpha = 5\% $, accepting the null hypothesis that the series is stationary.  
+
+### ACF and PACF plots
+The ACF and PACF plots of this time series are:  
+```{r fig.height=5, fig.width=12, message=FALSE, warning=FALSE, paged.print=FALSE}
+ggAcf(time.series, lag.max = 75) +
+  ggtitle("ACF of Lettuce Demand")+
+  theme_minimal()
+ggPacf(time.series, lag.max = 75) +
+  ggtitle("PACF of Lettuce Demand")+
+  theme_minimal()
+```
+
+From the ACF plot, I can see a correlation within multiples of 7, indicating a weekly seasonality. However, the PACF shows no such trend after the first iteration. 
+
+### Stationarity in the seasonal component
+To test if the seasonal component is also stationary, we can look at the time series after differencing with period 7 (which will remove the seasonal non-stationarity if it exists).
+
+```{r fig.height=8, fig.width=12, message=FALSE, warning=FALSE, paged.print=FALSE}
+cbind("Quantity (quintals)" = time.series,
+      "Weekly difference in quantity " = diff(time.series,7),
+      "Change in weekly diff" = diff(diff(time.series,7))
+      ) %>%
+  autoplot(facets=TRUE) +
+    xlab("Weeks (since 2015-03-05)") + ylab("") +
+    ggtitle("Lettuce in store 46673")+
+    theme_minimal()
+```
+
+After differencing once with period 7, we can determine if the data is still stationary using the KPSS test. We can also use the *nsdiff* function in R to find the differencing factor to make the data stationary.  
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=TRUE}
+library(urca)
+diff(time.series,7) %>% ur.kpss %>% summary()
+
+# Number of differencing necessary on the data to bring to stationarity
+time.series %>% nsdiffs()
+
+# After differencing with period 7, we are checking for stationarity
+time.series %>% diff(lag=7) %>% nsdiffs()
+```
+We can see that the seasonality component is not stationary and can be made stationary by differencing once (with period 7).  
+
+### Auto Sarima
+We can minimize AIC and BIC to find the optimal (p, d, q) coefficients, as well as the seasonal (p, d, q) components.  
+
+To reduce over-fitting, we can reduce the data into training and test datasets. We will use the train dataset to tran, and compare the accuracy on the test dataset. As we have around 15 weeks of data (15th week is not full), we can use the first 13 weeks for training and the remaining 14th and 15th week for testing.    
+```{r fig.height=6, fig.width=12, message=FALSE, warning=FALSE, paged.print=TRUE}
+train.time.series <- window(time.series, end = 14)
+test.time.series <- window(time.series, start = 14)
+model_arima <- forecast::auto.arima(train.time.series, trace=TRUE, stepwise=TRUE)
+summary(model_arima)
+autoplot(forecast(model_arima, h=12)) + 
+  autolayer(test.time.series, series="Test data", PI=FALSE)+
+  theme_minimal()
+```
+
+The model selected using AIC coefficient is ARIMA(0, 0, 1) with a seasonal component (0, 1, 1) with frequency 7. The residual plots (on the training data) show that the errors are normally distributed and look like random noise.    
+
+```{r fig.height=6, fig.width=12}
+checkresiduals(model_arima)
+```
+
+## Holts Winter model
+The Holt-Winters model has three components, level ($\alpha$), trend ($\beta$) and seasonality ($\gamma$. In each of these components, there can be additive, multiplicative or no effects. Assuming that the series only has seasonal component, the below plots use additive, multiplicative and damped-multiplicative methods for prediction.   
+```{r echo=FALSE, fig.height=6, fig.width=12, message=FALSE, warning=FALSE, paged.print=TRUE}
+fit1 <- hw(train.time.series,seasonal="additive", h=12)
+fit2 <- hw(train.time.series,seasonal="multiplicative", h=12)
+fit3 <- hw(train.time.series, damped=TRUE, seasonal="multiplicative", h=12)
+autoplot(time.series) +
+  autolayer(fit1, series="HW additive forecasts", PI=FALSE) +
+  autolayer(fit2, series="HW multiplicative forecasts",
+    PI=FALSE) +
+  autolayer(fit3, series="HW damped multiplicative series", PI=FALSE) +
+  ggtitle("Demand for Lettuce") +
+  xlab("Weeks (since 2015-03-05)") + ylab("Quintals") +
+  guides(colour=guide_legend(title="Method"))+
+  theme_minimal() + theme(legend.position="bottom")
+
+```
+The accuracy of the three models are
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+print('Aditive Model')
+round(accuracy(fit1),2)
+print('Multiplicative Model')
+round(accuracy(fit2),2)
+print('Damped multiplicative Model')
+round(accuracy(fit3),2)
+```
+
+### Estimating ETS models
+Estimating the $\alpha, \beta$ and $\gamma$ parameters by minimizing the sum of squared errors, we get that the additive error type, No trend and additive seasonality.  
+```{r echo=FALSE, fig.height=6, fig.width=12, message=FALSE, warning=FALSE, paged.print=TRUE}
+model_hw <- ets(train.time.series, model="ZZZ")
+summary(model_hw)
+model_hw %>% forecast(h=12) %>%
+  autoplot() +
+  autolayer(test.time.series, series="Test data", PI=FALSE)+
+  ylab("Lettuce demand")+ theme_minimal()
+
+
+```
+The residuals (on the training data) are normally distributed and look like random noise.  
+```{r fig.height=6, fig.width=12}
+autoplot(model_hw) + theme_minimal()
+checkresiduals(model_hw) + theme_minimal()
+```
+
+## Comparision between SARIMA and ETS
+The accuracy metrics on the test data for both the models are show below
+
+```{r echo=FALSE, paged.print=TRUE}
+test_pred_arima <- model_arima %>% forecast(h=12)
+test_pred_hw <- model_hw %>% forecast(h=12)
+error_df <- rbind(
+  data.frame(round(accuracy(test_pred_hw, test.time.series),2)),
+  data.frame(round(accuracy(test_pred_arima, test.time.series),2))
+)
+rownames(error_df) <- c('Holt-Winters Train', 'Holt-Winters Test', 'SARIMA Train', 'SARIMA Test')
+kable(error_df, caption = 'Comparision') %>% 
+  kable_styling(full_width = F) %>%
+  scroll_box()
+```
+
+Holts-Winter has lower error rate (RMSE, MAE) than SARIMA. Therefore Holts-winter is the better model.  
+
+```{r include=FALSE}
+# Re-train on the complete data
+model_ts <- ets(time.series, model="ZZZ")
+# Save the forecasted data
+model_ts %>% forecast(h=28) %>% data.frame() %>% 
+    mutate(date = seq(as.Date("2015-06-16"),as.Date("2015-07-13"),1)) %>% 
+  dplyr::select(date, Point.Forecast, Lo.95, Hi.95) %>% 
+  dplyr::rename(Forecast = Point.Forecast, confidence_intervel_left = Lo.95, confidence_intervel_right = Hi.95) %>% 
+  write.csv('forecast_01971614.csv')
+```
+
+## References
+1. [Forecasting Principles and practice](https://otexts.com/fpp2/) by Rob J Hyndman and George Athanasopoulos  
+2. Blogpost: [Stationary tests](http://www.aharsha.com/stationarity-tests/) by Achyuthuni Sri Harsha  
+3. Blogpost: [ARIMA](http://www.aharsha.com/arima/) by Achyuthuni Sri Harsha  
+4. [Github code samples](https://github.com/HarshaAsh/data_science/blob/organised/rmd/ARIMA.Rmd) by HarshaAsh  
+5. [Projects on www.andreasgeorgopoulos.com](https://www.andreasgeorgopoulos.com/forecast-demand/) by Andreas Georgopoulos  
