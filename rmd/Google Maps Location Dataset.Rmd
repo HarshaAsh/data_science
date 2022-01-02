@@ -16,32 +16,32 @@ library(lubridate)
 library(ggplot2)
 library(MASS)
 set.seed(0512)
-attendance <- read.csv("C:/Users/achyuthuni.harsha/Downloads/Attendance_Detail_29_11.csv")
-attendance <- attendance %>% 
-  filter(Was.at.Work == 'True') %>% 
-  mutate(in.time.dmy.hm = dmy_hm(paste(Attendance.Date, In.Time)),
-         out.time.dmy.hm = dmy_hm(paste(Attendance.Date, Last.Out.Time)),
-         post.midnight = (out.time.dmy.hm - in.time.dmy.hm < 0))
-attendance$Attendance.Date <- dmy(attendance$Attendance.Date)
-
-attendance$out.time.dmy.hm[attendance$post.midnight] <- attendance$out.time.dmy.hm[attendance$post.midnight] + days(1)
-attendance <- attendance %>% mutate(hours.worked = out.time.dmy.hm - in.time.dmy.hm)
-
-attendance$policy.in.time <- 'char'
-msu.intime <- attendance$Attendance.Date > dmy('4/8/2017') & attendance$Attendance.Date <= dmy('17/12/2017')
-walmart.intime <- attendance$Attendance.Date > dmy('17/12/2017') & attendance$Attendance.Date <= dmy('30/4/2018')
-walmart.buffer.intime <- attendance$Attendance.Date > dmy('30/4/2018') & attendance$Attendance.Date <= dmy('8/6/2018')
-walmart.daylight.savings.intime <- attendance$Attendance.Date >= dmy('11/6/2018')
-attendance$policy.in.time[msu.intime] <- '1:00 PM'
-attendance$policy.in.time[walmart.buffer.intime] <- '1:30 PM'
-attendance$policy.in.time[walmart.intime] <- '1:15 PM'
-attendance$policy.in.time[walmart.daylight.savings.intime] <- '12:00 PM'
-
-attendance <- attendance %>% 
-  mutate(policy.in.time.dmy.hm = ymd_hm(paste(Attendance.Date, policy.in.time))) %>% 
-  mutate(policy.out.time.dmy.hm = policy.in.time.dmy.hm + hours(9)) %>% 
-  mutate(diff.in.time = difftime(policy.in.time.dmy.hm, in.time.dmy.hm, units = 'mins'),
-         diff.out.time = difftime(out.time.dmy.hm, policy.out.time.dmy.hm, units = 'mins'))
+attendance <- read.csv("..//data//Attendance_Detail.csv")
+# attendance <- attendance %>% 
+#   filter(Was.at.Work == 'True') %>% 
+#   mutate(in.time.dmy.hm = dmy_hm(paste(Attendance.Date, In.Time)),
+#          out.time.dmy.hm = dmy_hm(paste(Attendance.Date, Last.Out.Time)),
+#          post.midnight = (out.time.dmy.hm - in.time.dmy.hm < 0))
+# attendance$Attendance.Date <- dmy(attendance$Attendance.Date)
+# 
+# attendance$out.time.dmy.hm[attendance$post.midnight] <- attendance$out.time.dmy.hm[attendance$post.midnight] + days(1)
+# attendance <- attendance %>% mutate(hours.worked = out.time.dmy.hm - in.time.dmy.hm)
+# 
+# # attendance$policy.in.time <- 'char'
+# msu.intime <- attendance$Attendance.Date > dmy('4/8/2017') & attendance$Attendance.Date <= dmy('17/12/2017')
+# walmart.intime <- attendance$Attendance.Date > dmy('17/12/2017') & attendance$Attendance.Date <= dmy('30/4/2018')
+# walmart.buffer.intime <- attendance$Attendance.Date > dmy('30/4/2018') & attendance$Attendance.Date <= dmy('8/6/2018')
+# walmart.daylight.savings.intime <- attendance$Attendance.Date >= dmy('11/6/2018')
+# attendance$policy.in.time[msu.intime] <- '1:00 PM'
+# attendance$policy.in.time[walmart.buffer.intime] <- '1:30 PM'
+# attendance$policy.in.time[walmart.intime] <- '1:15 PM'
+# attendance$policy.in.time[walmart.daylight.savings.intime] <- '12:00 PM'
+# 
+# attendance <- attendance %>% 
+#   mutate(policy.in.time.dmy.hm = ymd_hm(paste(Attendance.Date, policy.in.time))) %>% 
+#   mutate(policy.out.time.dmy.hm = policy.in.time.dmy.hm + hours(9)) %>% 
+#   mutate(diff.in.time = difftime(policy.in.time.dmy.hm, in.time.dmy.hm, units = 'mins'),
+#          diff.out.time = difftime(out.time.dmy.hm, policy.out.time.dmy.hm, units = 'mins'))
 ```
 
 ## Integrating Google location history

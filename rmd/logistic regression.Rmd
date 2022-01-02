@@ -1,12 +1,11 @@
 ---
 title: "Logistic Regression"
-output:
+date: 27-07-2019  
+author: Achyuthuni Sri Harsha
+output: 
   html_document:
-    df_print: paged
-  word_document: default
+    keep_md: true
 ---
-Date: 27-07-2019  
-Author: Achyuthuni Sri Harsha
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
@@ -32,11 +31,12 @@ The data used in this blog is taken from a very famous problem in [Kaggle](https
 In particular, in this blog I want to use Logistic regression for the analysis. A sample of the data is given below:      
 
 ```{r import_data_set, echo=FALSE}
-setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data')
+setwd('C:\\Users\\Achyuthuni\\Desktop\\data_science\\data/')
 raw_df <- read_csv("titanic.csv")
 colnames(raw_df) <- make.names(colnames(raw_df))
 
-preProcValues <- preProcess(raw_df %>% dplyr::select(-one_of('PassengerId', 'Ticket', 'Cabin', 'Name', 'Survived')),
+preProcValues <- preProcess(raw_df %>% dplyr::select(-one_of('PassengerId', 'Ticket', 'Cabin', 'Name', 'Survived')) %>%
+                              as.data.frame(),
                             method = c("knnImpute"),
                             k = 20,
                             knnSummary = mean)

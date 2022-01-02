@@ -2,7 +2,9 @@
 title: "CART"
 author: "Harsha Achyuthuni"
 date: "25/03/2020"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -13,14 +15,14 @@ library(gridExtra)
 library(kableExtra)
 library(rpart)
 library(rpart.plot)
-setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data')
+setwd('..\\data')
 raw_df <- read_csv("titanic.csv")
 ```
 
 ## Decision Trees
 Decision trees are a collection of predictive analytic techniques that use tree-like graphs for predicting the response variable. One such method is CHAID explained in a previous [blog](https://www.harshaash.website/chaid-decision-trees/). The most popular decision tree method is the CART or the Classification and regression trees. Decision trees partition the data set into mutually exclusive and exhaustive subsets, which results in the splitting of the original data resembling a tree-like structure.
 
-### CART Classification
+## CART Classification
 We can use the CART method for regression and classification. In this blog, I will go thru the CART classification in detail using the titanic example. Any decision tree model consists of 5 steps:  
 1. Start with the complete training data in the root node.  
 2. Decide on a splitting criterion  
@@ -37,7 +39,8 @@ The data used in this blog is the same as the used in other classification posts
 ```{r cleaning_data, echo=FALSE}
 colnames(raw_df) <- make.names(colnames(raw_df))
 
-preProcValues <- preProcess(raw_df %>% dplyr::select(-one_of('PassengerId', 'Ticket', 'Cabin', 'Name', 'Survived')),
+preProcValues <- preProcess(raw_df %>% dplyr::select(-one_of('PassengerId', 'Ticket', 'Cabin', 'Name', 'Survived')) %>% 
+                              as.data.frame(),
                             method = c("knnImpute"),
                             k = 20,
                             knnSummary = mean)
@@ -233,7 +236,7 @@ fit <- rpart(Survived~Parch, data = raw_df, method = 'class' ,control=ctrl)
 rpart.plot(fit, extra = 106)
 ```
 
-### Embarked location
+#### Embarked location
 There are three locations where the passengers have embarked. The Gini index within each of the location is:  
 
 ```{r}

@@ -2,7 +2,9 @@
 title: "Forecasting adoption of a new product"
 author: "Harsha Achyuthuni"
 date: "19/10/2019"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -11,8 +13,6 @@ library(readxl)
 library(tidyverse)
 library(kableExtra)
 ```
-
-This post was initially posted at [www.harshaash.website](https://www.harshaash.website/adoption-of-new-product/)  
 
 ## Introduction
 

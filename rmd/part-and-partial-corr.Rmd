@@ -1,11 +1,12 @@
 ---
 title: "Part and partial correlation"
-output:
+date: 31-07-2019  
+author: Achyuthuni Sri Harsha
+output: 
   html_document:
-    df_print: paged
+    keep_md: true
 ---
-Date: 31-07-2019  
-Author: Achyuthuni Sri Harsha
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
@@ -23,8 +24,6 @@ library(tidyverse)
 library(ggforce)
 set.seed(0512)
 ```
-
-This post can be found at [www,harshaash.website](http://www.harshaash.website/part-and-partial-correlation/)  
 
 ## Introduction
 

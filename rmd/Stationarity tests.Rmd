@@ -2,7 +2,9 @@
 title: "Stationarity tests"
 author: "Harsha Achyuthuni"
 date: "17/12/2019"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -29,13 +31,13 @@ Two types of tests are introduced in this blog
 2. Independence tests  
 
 ```{r import_data_set, include=FALSE}
-setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data')
+setwd('..\\data')
 attendance <- read.csv("Attendance_Detail.csv")
 ```
 
 ## Data
 
-For the following blog, we will use a sample from [attendance data set](https://www.harshaash.website/time-series-eda/) described in EDA blogs.    
+For the following blog, we will use a sample from [attendance data set](http://aharsha.com/time-series-eda/) described in EDA blogs.    
 
 ```{r attendance_dataset_manupulation, echo=FALSE}
 attendance <- attendance %>% 

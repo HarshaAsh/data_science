@@ -2,7 +2,9 @@
 title: "Analysis of Variance"
 author: "Harsha Achyuthuni"
 date: "July 16 2019"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -13,21 +15,20 @@ knitr::opts_chunk$set(
 )
 ```
 
-In this post, I would like to look into Anova hypothesis testing. The dataset I am going to use is published in https://smartcities.data.gov.in which is a Government of India project under the  National Data Sharing and Accessibility Policy.   
+In this post, I would like to look into Anova hypothesis testing. The data-set I am going to use is published in https://smartcities.data.gov.in which is a Government of India project under the  National Data Sharing and Accessibility Policy.   
 
-I want to analyse if the unemployment across Bangalore is similar or are threre pockets with high unemployment. The [Unemployment_Rate_Bengaluru.csv](https://smartcities.data.gov.in/catalog/city-profile-bengaluru?filters%5Bfield_catalog_reference%5D=2916949&format=json&offset=0&limit=9&sort%5Bcreated%5D=desc) dataset has total employed and unemployed people in Bangalore at a Ward level. For simplicity sake, I want to concentrate on three zones, Bangalore-east, Mahadevpura and Rajeshwari Nagar.  
+I want to analyse if the unemployment across Bangalore is similar or are there pockets with high unemployment. The [Unemployment_Rate_Bengaluru.csv](https://smartcities.data.gov.in/catalog/city-profile-bengaluru?filters%5Bfield_catalog_reference%5D=2916949&format=json&offset=0&limit=9&sort%5Bcreated%5D=desc) data set has total employed and unemployed people in Bangalore at a Ward level. For simplicity sake, I want to concentrate on three zones, Bangalore-east, Mahadevpura and Rajeshwari Nagar.  
 
 As I want to test that there is significant difference between unemployment rate in different zones in Bangalore, the null and alternate hypothesis will be as follows:  
-H0: muBangalore-east = muMahadevpura = muRajeshwari-Nagar  
-H1: Not all mu are equal  
+$$ H_0: \mu_{Bangalore-east} = \mu_{Mahadevpura} = \mu_{Rajeshwari-Nagar} $$  
+$$ H_1: Not\, all\, \mu\, are\, equal $$  
 
 Sample unemployment data set: 
 ```{r activities4, echo=FALSE}
-setwd("F:\\System")
 library(tidyverse)
 library(e1071)
 library(kableExtra)
-unemployment <- read_csv('Unemployment_Rate_Bengaluru_ason_01-03-2011_1.csv')
+unemployment <- read_csv('../data/Unemployment_Rate_Bengaluru_ason_01-03-2011_1.csv')
 colnames(unemployment) <- c('cityName', 'zoneName', 'wardName', 'wardNo', 'unemployed.no', 'employed.no', 'total.labour')
 unemployment <- unemployment %>% mutate(rate = unemployed.no/total.labour) %>% filter(zoneName %in% c('East', 'Mahadevapura', 'Rajarajeswari Nagar'))
 kable(dplyr::sample_n(unemployment, 5),
@@ -71,8 +72,8 @@ ggplot() +
 
 From the above graph, it looks like the three groups are normally distributed. To test for normality, we could use Shapiro-Wilk test.  
 The test for each group would have the following hypothesis:  
-H0: The unemployment rate in the group is normally distributed  
-H1: The unemployment rate in the group is not normally distributed 
+$H_0$: The unemployment rate in the group is normally distributed  
+$H_1$: The unemployment rate in the group is not normally distributed 
 ```{r shaprio-wilk, echo=TRUE}
 for(i in 1:nrow(data.summary)){
   test.dist <- (unemployment %>% dplyr::filter(zoneName == data.summary$group[i]))$rate
@@ -87,7 +88,7 @@ for(i in 1:nrow(data.summary)){
 }
 ```
 
-As p > a, where a = 0.01, retaining the Null hypothesis in all the three groups. Therefore we can assume that unemployment rate is normally distributed among all groups.  
+As $p > \alpha$, where $\alpha = 0.01$, retaining the Null hypothesis in all the three groups. Therefore we can assume that unemployment rate is normally distributed among all groups.  
 
 Another condition for anova is that the population variances are assumed to be same. This is an assumption I am willing to take at this point.  
 
@@ -115,8 +116,8 @@ plot.normal.groups(data.summary, mean, sd, 'Travel time (sec)', 'Assuming normal
 ```
 
 Performing Anova with  
-H0: muBangalore-east = muMahadevpura = muRajeshwari-Nagar  
-H1: Not all mu are equal    
+$$ H_0: \mu_{Bangalore-east} = \mu_{Mahadevpura} = \mu_{Rajeshwari-Nagar} $$  
+$$ H_1: Not\, all\, \mu\, are\, equal $$  
 
 ```{r anova-test-function-creation, echo=TRUE}
 # Functions used in anova-test
@@ -146,7 +147,7 @@ print(anova.summary)
 f.plot(f = anova.summary[[1]]$F[1], df1 = anova.summary[[1]]$Df[1], df2 = anova.summary[[1]]$Df[2])
 ```
 
-Here p < a, where a = 0.05 Hence rejecting the Null Hypothesis. From this test we can observe that not all groups have same mean. But to find out which groups are similar and which are different, I am conducting a TukeyHSD test.  
+Here $p < \alpha$, where $\alpha = 0.05$ Hence rejecting the Null Hypothesis. From this test we can observe that not all groups have same mean. But to find out which groups are similar and which are different, I am conducting a TukeyHSD test.  
 
 ```{r tukeyHSD, echo=TRUE}
 tukey.test <- TukeyHSD(anva)
@@ -164,6 +165,6 @@ ggplot(tukey.df, aes(colour=cut(`p adj`, c(0, 0.01, 0.05, 1),
     theme_minimal()+theme(legend.position="bottom")
 ```
 
-From this test we can see that there is significant difference (with a = 0.05 confidence) between Rajeshwari Nagar and Bangalore East.    
+From this test we can see that there is significant difference (with $\alpha = 0.05$ confidence) between Rajeshwari Nagar and Bangalore East.    
 
 Created on 17th June 2019, Achyuthuni Sri Harsha

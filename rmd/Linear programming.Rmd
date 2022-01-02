@@ -2,7 +2,9 @@
 title: "Linear programming and sensitivity analysis"
 author: "Harsha Achyuthuni"
 date: "13/08/2019"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -11,8 +13,6 @@ library(tidyverse)
 library(kableExtra)
 ```
 
-
-This post can be found at [harshaash.website](https://www.harshaash.website/linear-programming/)  
 
 ## Simple minimization problem
 
@@ -43,7 +43,7 @@ $$x_b \leq 400$$
 5. As the production of A or B cannot be negative.   
 $$ x_A \geq 0,  x_B \geq 0 $$
 
-#### Formulation
+## Formulation
 Combining all the constraints, the LP can be written as:  
 $$Min (2x_A + 3x_B)  $$
 Subject to constraints:  
@@ -55,7 +55,7 @@ A | B |        | RHS
 2 | 1 | $\leq$ | 600 
 0 | 1 | $\leq$ | 400   
 
-#### Graphical solution
+## Graphical solution
 Plotting the constraints I get the shaded region as the intersection region which satisfies all the constraints. Solutions that satisfy all the constraints are termed feasible solutions, and the shaded region is called the feasible solution region, or simply the feasible region.  
 ```{r graphical-minimising, echo=FALSE, message=FALSE, warning=FALSE}
 lpData <- data.frame(A = (0:30)*25, B = (0:30)*25)
@@ -66,7 +66,7 @@ ggplot(lpData, aes(x=A, y=B)) +
   geom_line(aes(y = c3)) +
   geom_line(aes(y = c4)) +
   geom_ribbon(data=subset(lpData, 125 <= A & A <= 250),
-              aes(ymin=c2,ymax=c3), fill="blue", alpha="0.5") +
+              aes(ymin=c2,ymax=c3), fill="blue", alpha=0.5) +
   scale_y_continuous(expand = c(0, 0), limits=c(0,650)) +
   scale_x_continuous(expand = c(0, 0), limits=c(0,400)) +
   labs(x = 'Gallons of A', y='Gallons of B') +
@@ -80,7 +80,7 @@ Clearly, some points in the feasible region would provide a total cost of \$1200
 
 Therefore the ideal production to minimize cost should be to produce 250 gallons of A and 100 gallons of B.  
 
-#### Solution in R
+## Solution in R
 In R, LP_solve is implemented through the lpSolve and lpSolveAPI packages. Using the lpSolve package, I can solve a linear programming problem as follows:  
 ```{r lpSolve, message=FALSE, warning=FALSE}
 library(lpSolve)
@@ -140,7 +140,7 @@ kable(display.lp.constraint, caption = 'Constraints') %>%
   scroll_box()
 ```
 
-#### Sensitivity analysis
+## Sensitivity analysis
 Sensitivity analysis is the study of how the changes in the coefficients of an optimization model affect the optimal solution. Using sensitivity analysis, we can answer questions such as the following:  
 1. How will a change in a coefficient of the objective function affect the optimal solution?  
 2. How will a change in the right-hand-side value for a constraint affect the optimal solution?  

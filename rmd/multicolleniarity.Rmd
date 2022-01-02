@@ -2,7 +2,9 @@
 title: "Multicollinearity"
 author: "Harsha Achyuthuni"
 date: "December 23, 2018"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -18,10 +20,10 @@ library(ggplot2)
 library(MASS)
 library(kableExtra)
 set.seed(0512)
-travel <- read.csv('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data/travel.csv') %>% filter(hours.worked > 9)
+travel <- read.csv('../data/travel.csv') %>% filter(hours.worked > 9)
 ```
 
-I want to go thru some basic statistical concepts before starting with the problem. I want to explain what is multicolleniarity and how and when to tackle it.  
+I want to go thru some basic statistical concepts before starting with the problem. I want to explain what is multi-colliniarity and how and when to tackle it.  
 
 ## Collinearity
 
@@ -57,7 +59,7 @@ The idea is that I can change the value of one independent variable and not the 
 
 That said, I need not always fix multicollinearity. Multicollinearity affects the coefficients and p-values, but it does not influence the predictions, precision of the predictions, and the goodness-of-fit statistics. If my primary goal is to make predictions, and I don't need to understand the role of each independent variable, I don't need to reduce severe multicollinearity.
 
-# In-time analysis problem
+## In-time analysis problem
 Now that I have discussed this much, let me continue with the [in-time analysis problem](http://www.harshaash.website/in-time-problem). I want to analyse my entry time at office and understand how different factors effect it.  
 
 Colliniarity checks are done after Univariate and multivariate analysis in EDA. One reason for doing so is that now I know how each factor looks like, and as collinearity is only a linear association between two explanatory variables, we can convert our factors to linear after applying some functions on them(log, square root etc).  
@@ -122,7 +124,7 @@ corr_matrix_plotting_fxn <- function(df){
   cormat <- round(cor(df), 2)
   
   # Getting the upper triangular matrix
-  cormat[upper.tri(cormat)]<- NA
+  cormat[lower.tri(cormat)]<- NA
   
   # Melt the correlation data and drop the rows with NA values
   melted_cormat <- reshape::melt(cormat, na.rm = TRUE)
@@ -190,13 +192,13 @@ qgraph(cormat, graph = "pcor", layout = "spring", nodeNames = Names, legend.cex 
 
 From this plot, I can see that travelling time is not correlated to any other variable, and among the other two which are correlated, I will pick out time difference as my second variable and reject hours worked.  
 
-#### References:  
+## References:  
 1. Applied Linear Statistical Models, 4th Edition  
 2. Wikipedia (extensively)  
 3. Correlation matrix heat map: [STHDA](http://www.sthda.com/english/wiki/ggplot2-quick-correlation-matrix-heatmap-r-software-and-data-visualization)  
 4. Correlation network code: [Sacha Epskamp](http://sachaepskamp.com/files/Cookbook.html)  
 
-#### Basic statistical formulaes
+## Basic statistical formulaes
 
 The formulas for some basic statistical terms used in this blog are given below.  
 

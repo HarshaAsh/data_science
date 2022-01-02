@@ -2,7 +2,9 @@
 title: "Multivariate Analysis"
 author: "Harsha Achyuthuni"
 date: "December 18, 2018"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -18,7 +20,7 @@ library(MASS)
 library(knitr)
 library(kableExtra)
 set.seed(0512)
-travel <- read.csv('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data/travel.csv')
+travel <- read.csv('C:\\Users\\Achyuthuni\\Desktop\\data_science\\data/travel.csv')
 ```
 
 ## Introduction

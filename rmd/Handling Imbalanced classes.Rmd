@@ -2,9 +2,9 @@
 title: "Handling imbalanced classes"
 author: "Harsha Achyuthuni"
 date: "05/09/2020"
-output:
-  html_document: default
-  word_document: default
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -49,7 +49,7 @@ From the above data, we could create a model which predicts the class always as 
 In the above example, it is easy to split the data accurately into two classes, i.e. those above 10 are red class and the remaining are blue. This can be done as this data is linearly separable. However, in most cases, if we are using accuracy or AUC for prediction, then we would reach the model that always predicts Red. This can be sometimes resolved by changing the optimising metric to use while training, like sensitivity or specificity, which will be described in another blog. In any case, it is good to balance the classes before training a machine learning model.  
 
 ## How to resolve this issue?  
-Balancing the classes means reducing the imbalance in the dataset. This can be achieved in many ways, but three are discussed in this blog. They are:
+Balancing the classes means reducing the imbalance in the data set. This can be achieved in many ways, but three are discussed in this blog. They are:
 1. Up-sampling
 2. Down-sampling
 3. SMOTE sampling

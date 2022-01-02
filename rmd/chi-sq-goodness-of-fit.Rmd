@@ -2,7 +2,9 @@
 title: "Chi-square goodness of fit test"
 author: "Harsha Achyuthuni"
 date: "July 16 2019"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -13,7 +15,7 @@ knitr::opts_chunk$set(
 )
 library(tidyverse)
 set.seed(0512)
-setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data')
+setwd('..\\data')
 data <- read_csv("travel.csv")
 data <- data %>% filter(diff.out.time >= 0)
 data <- data %>% rename(alt.distr = diff.out.time)
@@ -113,8 +115,8 @@ As p < α, where α = 0.05, rejecting the Null hypothesis.
 
 In the same post, I showed using qq plot how the distribution looks like a exponential distribution. To test if it is statistically significant, I will use the Chi-Square test.  
 The chi-square goodness of fit test for each group would have the following hypothesis:    
-H0: There is no statistically significant difference between the observed frequencies of 'diff-in-time' and expected frequencies   from exponential distribution   
-H1: There is a statistically significant difference   
+$H_0$: There is no statistically significant difference between the observed frequencies of 'diff-in-time' and expected frequencies   from exponential distribution   
+$H_1$: There is a statistically significant difference   
 
 ```{r observed-frequencies-1, echo=TRUE}
 minimum.dist <- min(data$alt.distr)
@@ -159,7 +161,7 @@ chi.sq.plot(chi.sq = chi.test$statistic, df = chi.test$parameter, title = 'Null 
 ```
 
 As p > α, where α = 0.05, retaining the Null hypothesis  
-I want to find the effect size or the strength of relationship between these variables. That is explained by Cramers V by
+I want to find the effect size or the strength of relationship between these variables. That is explained by Cramers-V by
 ```{r tukeyHSD, echo=TRUE}
 library(lsr)
 cramersV(chi.sq.table$obs_freq, p = chi.sq.table$exp_freq, rescale.p = TRUE)

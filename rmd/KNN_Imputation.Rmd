@@ -2,7 +2,9 @@
 title: "Missing value imputation using KNN"
 author: "Harsha Achyuthuni"
 date: "07/07/2019"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -20,7 +22,7 @@ The data is technical spec of cars. I have taken this data set from [UCI Machine
 library(tidyverse)
 library(RANN)
 library(kableExtra)
-cars_info <- read.csv('C:\\Users\\Achyuthuni\\Desktop\\BAI\\Tech Material\\Python\\Python_DS_2days\\data/Auto.csv')
+cars_info <- read.csv('../data/Auto.csv')
 cars_info <- cars_info %>% mutate(horsepower = as.numeric(as.character(horsepower)),
                                   origin = as.factor(origin))
 kable(dplyr::sample_n(cars_info, 5),
@@ -106,5 +108,3 @@ kable(final %>% dplyr::select(name, year, horsepower, actual_hp, difference),
 ```
 
 Out of the 5 cars, I was able to impute horsepower for 2 cars with less than 10hp difference, one car within 15hp and two cars within 30hp difference. To get better results, I should use other imputation techniques. Generally these 5 cars are removed while doing any analysis. In R, you could find the removed data set as *mtcars*.   
-  
-This post is published at [www.harshaash.website/knn-imputation](http://www.harshaash.website/knn-imputation/). For similar posts, please visit [www.harshaash.website](http://www.harshaash.website/log-of-posts/)

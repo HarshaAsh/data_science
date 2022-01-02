@@ -1,12 +1,12 @@
 ---
 title: "Linear Regression"
-output:
-  pdf_document: default
+date: "03-08-2019"  
+author: "Achyuthuni Sri Harsha"
+output: 
   html_document:
-    df_print: paged
+    keep_md: true
 ---
-Date: 03-08-2019  
-Author: Achyuthuni Sri Harsha
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
@@ -22,7 +22,6 @@ library(MASS)
 set.seed(0512)
 ```
 
-This blog can be found at [www.harshaash.website](http://www.harshaash.website/linear-regression)  
 
 ## Introduction
 
@@ -435,7 +434,7 @@ durbinWatsonTest(model$finalModel)
 ```
 As p value is less than cutoff at $\alpha =0.05$, there is no auto correlation. Auto correlation generally exists in time series data.   
 
-## Outlier analysis
+### Outlier analysis
 From the residual plots, I suspect that that there might be certain outliers that are adversely effecting the model. i am using the following distance measures to check for outliers in the model.  
 1. Mahalanobis distance: Distance between the observation and the centroid of the values  
 2. Leverages: Capacity of an observation to be influential due to having extreme predictor values (unusual combination of predictor values).  
@@ -527,5 +526,3 @@ print(summary(model))
 ```
 
 Modelling is an iterative process. With more effort, I could get a better model using linear regression itself. Otherwise I could use other regression techniques to get better results.   
-
-Created by Harsha Achyuthuni. For more such links, visit [www.harshaash.website](http://www.harshaash.website/log-of-posts/)

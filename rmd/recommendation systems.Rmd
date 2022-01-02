@@ -2,7 +2,9 @@
 title: "Recommendation systems"
 author: "Harsha Achyuthuni"
 date: "03/07/2019"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
 
 Association mining is commonly used to make product recommendations by identifying products that are frequently bought together. It is a common technique used to find associations between many variables. It is often used by grocery stores, e-commerce websites, and anyone with large transaction databases. A most common example that we encounter in our daily lives — Amazon knows what else you want to buy when you order something on their site.  
@@ -19,7 +21,7 @@ knitr::opts_chunk$set(
 
 ## Associate mining in R
 
-[Michael Hahsler](https://michael.hahsler.net/) has authored and maintains two very useful R packages relating to association rule mining: the arules package and the arulesViz package.  
+[Michael Hahsler](https://michael.hahsler.net/) has authored and maintains two very useful R packages relating to association rule mining: the *arules* package and the *arulesViz* package.  
 
 ```{r library, echo=TRUE, message=FALSE, warning=FALSE}
 library(tidyverse)
@@ -33,7 +35,7 @@ library(kableExtra)
 There’s a [public data](http://www.salemmarafi.com/wp-content/uploads/2014/03/groceries.csv) of buying records in a grocery store. The data looks like below.  
 
 ```{r read-data, echo=TRUE}
-data <- read.transactions('groceries.csv', format = 'basket', sep=',')
+data <- read.transactions('..\\data\\groceries.csv', format = 'basket', sep=',')
 inspect(head(data))
 ```
 

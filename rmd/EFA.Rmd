@@ -2,7 +2,9 @@
 title: "Factor analysis"
 author: "Harsha Achyuthuni"
 date: "18/12/2019"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -10,7 +12,7 @@ library(tidyverse)
 library(kableExtra)
 library(corrplot)
 library(psych)
-setwd('C:\\Users\\Achyuthuni\\Desktop\\data_science\\data')
+setwd('..\\data')
 efa <- read.csv("EFA.csv")
 knitr::opts_chunk$set(
 	echo = FALSE,

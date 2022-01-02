@@ -2,7 +2,9 @@
 title: "Stationarity"
 author: "Harsha Achyuthuni"
 date: "16/12/2019"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -13,7 +15,7 @@ library(gridExtra)
 knitr::opts_chunk$set(echo = FALSE)
 ```
 
-# Time Series
+## Time Series
 
 A time series is a series of data points captured in time order. Most commonly, a time series is a sequence taken at successive equally spaced points in time. This post is the first in a series of blogs on time series methods and forecasting.  
 

@@ -2,7 +2,9 @@
 title: "ARIMA"
 author: "Harsha Achyuthuni"
 date: "01/12/2019"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -19,9 +21,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-Please visit [harshaash.website](https://www.harshaash.website/arima/) for more such posts.  
-
-# Arima model
+## Arima model
 ARIMA, short for 'Auto Regressive Integrated Moving Average' is a very popular forecasting model. ARIMA models are basically regression models: auto-regression simply means regression of a variable on itself measured at different time periods. 
 
 **AR**: Autoregression. A model that uses the dependent relationship between an observation and some number of lagged observations  
@@ -45,9 +45,9 @@ The initial ARMA and ARIMA models were developed by Box and Jenkins in 1970. The
 2. Parameter estimation  
 3. Model checking   
 
-# Model form selection
+## Model form selection
 
-## Evaluate stationarity  
+### Evaluate stationarity  
 A stationary time series is one whose properties do not depend on the time at which the series is observed. Time series with trends, or with seasonality, are not stationary. A white noise series is stationary — it does not matter when you observe it, it should look much the same at any point in time.  
 
 The presence of stationarity can be found in many ways among which the most popular three are:  
@@ -56,11 +56,11 @@ The presence of stationarity can be found in many ways among which the most popu
 3. KPSS test  
 
 ```{r import_data_set, include=FALSE}
-setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data')
+setwd('..\\data')
 attendance <- read.csv("Attendance_Detail.csv")
 ```
 
-In the below example, I will use a sample from my [attendance data set](https://www.harshaash.website/time-series-eda/) described in EDA blogs. (Actual data is not shown for security reasons. This is mock data which is very similar to the actual one. The analysis will be the same)  
+In the below example, I will use a sample from my [attendance data set](http://aharsha.com/time-series-eda/) described in EDA blogs. (Actual data is not shown for privacy reasons. This is mock data which is very similar to the actual one. The analysis will be the same)  
 ```{r attendance_dataset_manupulation, echo=FALSE}
 attendance <- attendance %>% 
   filter(Was.at.Work) %>% 
@@ -126,7 +126,7 @@ tseries::kpss.test(time.series, null="Trend")
 ```
 As p-value is less than 5%, rejecting the null hypothesis that the data is stationary.  
 
-## Selection of differencing parameter d
+### Selection of differencing parameter d
 The attendance data (in time) have failed both tests for the stationary, the Augmented Dickey-Fuller and the KPSS test. Differencing is used to convert the data to a stationary model. Differencing is nothing but computing the differences between consecutive observations.  
 
 The above tests for first difference for in-time looks like the following:  
@@ -154,13 +154,13 @@ library(urca)
 time.series.diff %>% ur.kpss() %>% summary()
 ```
 
-## Selection of AR(p) and MA(q) parameters
+### Selection of AR(p) and MA(q) parameters
 One of the important tasks in using auto-regressive model in forecasting is the model identification, which is, identifying the value of p and q (the number of lags).  
 Selection of AR(p) and MA(q) lags can be done by two methods:  
 1. ACF and PACF functions  
 2. AIC or BIC coefficients  
 
-### ACF and PACF coefficients
+#### ACF and PACF coefficients
 Auto-correlation is the correlation between $Y_t$ measured at different time periods (for example, $Y_t$ and $Y_{t-1}$ or $Y_t$ and $Y_{t-k}$). A plot of auto-correlation for different values of k is called auto-correlation function (ACF) or correlogram.  
 Partial auto-correlation of lag k is the correlation between $Y_t$ and $Y_{t-k}$ when the influence of all intermediate values ($Y_{t-1}$, $Y_{t-2}$...$Y_{t-k+1}$) is removed (partial out) from both $Y_t$ and $Y_{t-k}$. A plot of partial auto-correlation for different values of k is called partial auto-correlation function (PACF).    
 
@@ -189,7 +189,7 @@ ggPacf(time.series.diff, lag.max = 50) +
 
 From the ACF and PACF plots. the auto-correlations cuts off to zero after the first lag. The PACF value cuts off to zero after 2 lags. So, the appropriate model could be ARMA(2, 1) process. Combining differencing parameter from previous section(d=1), The most appropriate model would be ARIMA(2, 1, 1)
 
-### AIC and BIC coefficients
+#### AIC and BIC coefficients
 Akaike’s Information Criterion (AIC) and Bayesian Information Criterion (BIC), which were useful in selecting predictors for regression, are also useful for determining the order of an ARIMA model. Best estimates of AR and MA orders will minimize AIC or BIC.
 ```{r}
 forecast::auto.arima(time.series, max.q = 1, trace=TRUE, stepwise=TRUE)

@@ -2,7 +2,9 @@
 title: "CHAID"
 author: "Harsha Achyuthuni"
 date: "01/03/2020"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -12,7 +14,7 @@ library(readxl)
 library(caret)
 library(gridExtra)
 library(kableExtra)
-setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data')
+setwd('..\\data')
 raw_df <- read_csv("titanic.csv")
 ```
 
@@ -42,7 +44,8 @@ The data used in this blog is the same as the used in other classification posts
 
 colnames(raw_df) <- make.names(colnames(raw_df))
 
-preProcValues <- preProcess(raw_df %>% dplyr::select(-one_of('PassengerId', 'Ticket', 'Cabin', 'Name', 'Survived')),
+preProcValues <- preProcess(raw_df %>% dplyr::select(-one_of('PassengerId', 'Ticket', 'Cabin', 'Name', 'Survived')) %>% 
+                              as.data.frame(),
                             method = c("knnImpute"),
                             k = 20,
                             knnSummary = mean)
@@ -63,7 +66,7 @@ kable(raw_df %>% sample_n(5), caption = 'titanic dataset') %>%
 ```
 
 
-#### Step 2: Statistical significance of each variable
+### Step 2: Statistical significance of each variable
 
 In this dataset, Pclass, Gender, SibSp, Parch, Embarked are taken as categorical variables. For categorical variables, the Chi-square Test of Independence test is performed with the null hypothesis ($H_0$) the independent variable and Survival are independent 
 
@@ -131,7 +134,7 @@ plot_bivariate_cont <- function(raw_data, pred_column_name){
 plot_bivariate_cont(raw_df, pred_column_name = 'Survived')
 ```
 
-#### Step 3: Selecting the best variable to split based on least p-value  
+### Step 3: Selecting the best variable to split based on least p-value  
 For all the dependant variables, the summary of the tests and the test statistic, along with the p-value, is given below:
 ```{r summary_test_df}
 rownames(summary_test_df) <- c()
@@ -175,7 +178,7 @@ The business rules for the tree can be obtained as:
 print(full_data)
 ```
 
-### References:
+## References:
 1. [Business Analytics: The Science of Data-Driven Decision Making - Dinesh Kumar](https://www.wileyindia.com/business-analytics-the-science-of-data-driven-decision-making.html)  
 2. [Machine Learning- Advanced decision trees](https://www.linkedin.com/learning/machine-learning-ai-advanced-decision-trees/how-quest-handles-nominal-variables?u=26192810)  
  

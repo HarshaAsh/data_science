@@ -1,11 +1,11 @@
 ---
 title: "Hypothesis test for population parameters"
-output:
+date: 12-06-2019  
+author: Achyuthuni Sri Harsha
+output: 
   html_document:
-    df_print: paged
+    keep_md: true
 ---
-Date: 12-06-2019  
-Author: Achyuthuni Sri Harsha
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(message = FALSE, warning = FALSE)
@@ -22,7 +22,7 @@ Z test and t test are used when a claim is made about the population parameter s
   
 I will try to explain it using a problem that I faced recently.  
 ```{r import_data_set, include=FALSE}
-setwd('C:\\Users\\Achyuthuni\\Desktop\\attendance\\EDA\\data')
+setwd('..\\data')
 attendance <- read.csv("Attendance_Detail.csv")
 ```
 
@@ -57,8 +57,8 @@ My manager claims that I always leave early from office. I have to disprove his 
 
 I want to prove with 95% confidence interval that I leave on an average at least 10 minutes after my policy out-time. My null and alternate hypothesis will be.  
     
-H0: μdiff.out.time <= 10  
-H1: μdiff.out.time > 10  
+$$ H_0: μ_{diff.out.time} <= 10 $$  
+$$ H1: μ_{diff.out.time} > 10 $$  
   
 I know that the standard deviation of my population (out-time difference) is 1 hour. As I know the population standard deviation, I can conduct the z-test.  
 
@@ -197,6 +197,4 @@ t.plot(t.score = t_soln$statistic, df = t_soln$parameter, alternative = 'greater
 print(t_soln)
 ```
 
-As p < α, where α = 0.05. Hence rejecting the Null Hypothesis. Even by doing a t-test, I am rejecting the null hypothesis.    
-  
-Created on 16th June 2019, Achyuthuni Sri Harsha
+As p < α, where α = 0.05. Hence rejecting the Null Hypothesis. Even by doing a t-test, I am rejecting the null hypothesis.

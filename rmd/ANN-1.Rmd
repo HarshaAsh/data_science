@@ -2,9 +2,9 @@
 title: "Artificial Neural Networks from scratch - Part 1"
 author: "Harsha Achyuthuni"
 date: "31/05/2020"
-output:
-  html_document: default
-  word_document: default
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}

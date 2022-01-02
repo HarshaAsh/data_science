@@ -2,7 +2,9 @@
 title: "Customer Lifetime Value"
 author: "Harsha Achyuthuni"
 date: "12/10/2019"
-output: html_document
+output: 
+  html_document:
+    keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -15,14 +17,14 @@ library(tidyverse)
 library(readxl)
 library(lubridate)
 library(kableExtra)
-raw_data <- read_excel('F:/System//Online Retail.xlsx')
+raw_data <- read_excel('..//data//Online Retail.xlsx')
 ```
 
 In this blog, I want to introduce Markov chains and find out the customer lifetime value. Customer Lifetime Value is the net present value (NPV) of the future margin generated from a customer or a customer segment. 
   
 ## Concept
 
-**Markov Chains**  
+### Markov Chains  
 In probability theory and statistics, a sequence or other collection of random variables is independent and identically distributed (i.i.d. or iid or IID) if each random variable has the same probability distribution as the others and all are mutually independent.  
 We have a set of states, S = {s1, s2,...,sr}. The process starts in one of these states and moves successively from one state to
 another. Each move is called a step. If the chain is currently in state $s_i$, then it moves to state $s_j$ at the next step with a probability denoted by $p_{ij}$ , and this probability does not depend upon which states the chain was in before the current state.
@@ -30,7 +32,7 @@ another. Each move is called a step. If the chain is currently in state $s_i$, t
 That is the probability to be present in state j at time *t+1* is only dependent on the state at time *t*.
 $$ P_{ij} = P(X_{t+1} = j | X_{t} = i) $$
 
-**Customer Lifetime Value**  
+### Customer Lifetime Value  
 Customer lifetime value is important because, the higher the number, the greater the profits. You'll always have to spend money to acquire new customers and to retain existing ones, but the former costs five times as much. When you know your customer lifetime value, you can improve it.
 
 The customer segments can be represented as states of the Markov chain. Let {0, 1, 2, …, m} be the states of a Markov chain in which states {1, 2,..., m} denote different customer segments and state 0 denotes non-customer state.  
@@ -314,8 +316,7 @@ CLT
 Therefore the customer lifetime value is 484.34.
 
 ___________________________________________________
-Created by Achyuthuni Sri Harsha  
-References:  
+## References
 1. Business Analytics: The Science of Data-Driven Decision Making [Available](https://www.wileyindia.com/business-analytics-the-science-of-data-driven-decision-making.html)  
 2. Introduction to probability, Charles M. Grinstead and J. Laurie Snell, [Available](http://www.dartmouth.edu/~chance/teaching_aids/books_articles/probability_book/book.html)  
 3. CS294 Markov Chain Monte Carlo: Foundations & Applications (lecture by Prof. Alistair Sinclair in Fall 2009)   [Available](https://people.eecs.berkeley.edu/~sinclair/cs294/n2.pdf)  
