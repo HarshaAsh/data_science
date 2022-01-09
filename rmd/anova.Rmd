@@ -61,7 +61,7 @@ data.summary
 
 From the above table I observe that the unemployment rate is between 54% and 57% in all the three zones.  
 
-One of the conditions to perform anova is that the population response variable follows a normal distribution in each group. The distribution of unemployment rate in diffeent zones are:
+One of the conditions to perform anova is that the population response variable follows a normal distribution in each group. The distribution of unemployment rate in different zones are:
 
 ```{r real_plots, echo=TRUE}
 ggplot() + 
@@ -88,7 +88,7 @@ for(i in 1:nrow(data.summary)){
 }
 ```
 
-As $p > \alpha$, where $\alpha = 0.01$, retaining the Null hypothesis in all the three groups. Therefore we can assume that unemployment rate is normally distributed among all groups.  
+As $p > \alpha$, where $\alpha = 0.01$, retaining the Null hypothesis in all the three groups. Therefore, we can assume that unemployment rate is normally distributed among all groups.  
 
 Another condition for anova is that the population variances are assumed to be same. This is an assumption I am willing to take at this point.  
 
